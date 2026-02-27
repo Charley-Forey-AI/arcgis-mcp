@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>PointCloudLayer - change point size and density | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body,
+      arcgis-scene {
+        height: 100%;
+        margin: 0;
+      }
+
+      calcite-panel {
+        width: 320px;
+      }
+
+      .slider-block {
+        margin: 12px 10px 12px;
+      }
+
+      .slider-label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 800;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+
+      <calcite-panel slot="bottom-left" heading="Customize Point Size and Density">
+        <div class="slider-block">
+          <span class="slider-label">Point size</span>
+          <calcite-slider
+            id="point-size-slider"
+            min="1"
+            max="15"
+            step="0.5"
+            value="5"
+            ticks="15"
+            label-handles
+            label-ticks>
+          </calcite-slider>
+        </div>
+
+        <div class="slider-block">
+          <span class="slider-label">Points per inch</span>
+          <calcite-slider
+            id="points-per-inch-slider"
+            min="1"
+            max="40"
+            step="1"
+            value="5"
+            ticks="40"
+            label-handles
+            label-ticks>
+          </calcite-slider>
+        </div>
+      </calcite-panel>
+    </arcgis-scene>
+
+    <script type="module">
+      const [Map, PointCloudLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/PointCloudLayer.js",
+      ]);
+
+      const selectedPointsSize = 5;
+      const selectedPointsPerInch = 5;
+
+      const pcLayer = new PointCloudLayer({
+        url: "https://tiles.arcgis.com/tiles/V6ZHFr6zdgNZuVG0/arcgis/rest/services/BARNEGAT_BAY_LiDAR_UTM/SceneServer",
+        renderer: {
+          type: "point-cloud-rgb",
+          field: "RGB",
+          pointSizeAlgorithm: {
+            type: "fixed-size",
+            useRealWorldSymbolSizes: false,
+            size: selectedPointsSize,
+          },
+          pointsPerInch: selectedPointsPerInch,
+        },
+      });
+
+      // create map and layer
+      const map = new Map({
+        basemap: "gray-vector",
+        ground: "world-elevation",
+        layers: [pcLayer],
+      });
+
+      const viewElement = document.querySelector("arcgis-scene");
+      viewElement.map = map;
+      viewElement.camera = {
+        heading: 210,
+        tilt: 78,
+        position: {
+          x: -8249335,
+          y: 4832005,
+          z: 50.7,
+          spatialReference: { wkid: 3857 },
+        },
+      };
+
+      await viewElement.viewOnReady();
+
+      const pointsizeSlider = document.getElementById("point-size-slider");
+      const pointsperinchSlider = document.getElementById("points-per-inch-slider");
+
+      function updatePointSize(value) {
+        const newRenderer = pcLayer.renderer.clone();
+        newRenderer.pointSizeAlgorithm.size = Number(value);
+        pcLayer.renderer = newRenderer;
+      }
+
+      function updatePointsPerInch(value) {
+        const newRenderer = pcLayer.renderer.clone();
+        newRenderer.pointsPerInch = Number(value);
+        pcLayer.renderer = newRenderer;
+      }
+
+      pointsizeSlider.addEventListener("calciteSliderInput", (event) => {
+        updatePointSize(event.target.value);
+      });
+
+      pointsperinchSlider.addEventListener("calciteSliderInput", (event) => {
+        updatePointsPerInch(event.target.value);
+      });
+    </script>
+  </body>
+</html>

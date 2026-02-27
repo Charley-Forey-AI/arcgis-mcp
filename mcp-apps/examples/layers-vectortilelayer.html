@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>VectorTileLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map zoom="3" center="-98.58, 39.83"> </arcgis-map>
+    <script type="module">
+      // Import needed classes.
+      const [Map, VectorTileLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/VectorTileLayer.js",
+      ]);
+
+      const layer = new VectorTileLayer({
+        url: "https://jsapi.maps.arcgis.com/sharing/rest/content/items/75f4dfdff19e445395653121a95a85db/resources/styles/root.json",
+      });
+
+      // Get a reference to the Map component element.
+      const viewElement = document.querySelector("arcgis-map");
+
+      viewElement.map = new Map({
+        layers: [layer],
+      });
+    </script>
+  </body>
+</html>

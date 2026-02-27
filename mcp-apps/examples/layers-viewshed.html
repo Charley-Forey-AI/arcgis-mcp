@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>ViewshedLayer in slides | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      arcgis-layer-list,
+      #viewshedControls {
+        width: 220px;
+      }
+      calcite-label {
+        --calcite-label-margin-bottom: 0;
+      }
+      #promptText {
+        margin-top: 5px;
+      }
+
+      #menu {
+        display: flex;
+        justify-content: center;
+      }
+      #slideSelector {
+        position: absolute;
+        bottom: 25px;
+        display: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="c8486d8fdbc34e468e5d5dc2458c0aa3">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+
+      <calcite-card id="viewshedControls" slot="top-right">
+        <calcite-label layout="inline-space-between">
+          Edit visible viewsheds
+          <calcite-switch id="interactivitySwitch"></calcite-switch>
+        </calcite-label>
+        <div id="promptText" style="display: none">
+          <em>Hover and click on a viewshed to select it. Drag the handles to edit it.</em>
+        </div>
+      </calcite-card>
+      <arcgis-layer-list slot="top-right"></arcgis-layer-list>
+    </arcgis-scene>
+
+    <div id="menu">
+      <calcite-segmented-control id="slideSelector" width="full"> </calcite-segmented-control>
+    </div>
+
+    <script type="module">
+      const [ViewshedLayer, ViewshedAnalysis, Viewshed, Slide, Point] = await $arcgis.import([
+        "@arcgis/core/layers/ViewshedLayer.js",
+        "@arcgis/core/analysis/ViewshedAnalysis.js",
+        "@arcgis/core/analysis/Viewshed.js",
+        "@arcgis/core/webscene/Slide.js",
+        "@arcgis/core/geometry/Point.js",
+      ]);
+
+      // Get a reference to the Scene component and other elements.
+      const viewElement = document.querySelector("arcgis-scene");
+      const slideSelector = document.getElementById("slideSelector");
+      const interactivitySwitch = document.getElementById("interactivitySwitch");
+      const promptText = document.getElementById("promptText");
+
+      // Wait until the component is loaded.
+      await viewElement.viewOnReady();
+
+      /**********************************************
+       * Add UI element that navigates between slides
+       *********************************************/
+      const slides = viewElement.map.presentation.slides;
+
+      // Loop through slides in the collection and create a button for each.
+      for (const slide of slides) {
+        const index = slides.indexOf(slide);
+        const button = createSlideButton(slide, index, false);
+        slideSelector.appendChild(button);
+      }
+      slideSelector.addEventListener("calciteSegmentedControlChange", () => {
+        const slide = slides.getItemAt(slideSelector.selectedItem.value);
+        slide.applyTo(viewElement.view, {
+          speedFactor: 0.4,
+        });
+      });
+      /**********************************************
+       * Create additional viewshed layer and add a new slide for it
+       *********************************************/
+
+      const viewshedLayer = new ViewshedLayer({
+        title: "Viewpoint 3",
+        source: new ViewshedAnalysis(),
+      });
+
+      const viewshed = new Viewshed({
+        observer: new Point({
+          spatialReference: {
+            latestWkid: 3857,
+            wkid: 102100,
+          },
+          x: -7912158.0615638,
+          y: 5213199.964671738,
+          z: 30,
+        }),
+        farDistance: 176.10907675350214,
+        heading: 299.4705057474978,
+        tilt: 97.98528109253681,
+        horizontalFieldOfView: 360,
+        verticalFieldOfView: 180,
+      });
+      viewshedLayer.source.viewsheds.add(viewshed);
+      // Add it to the group layer so that it appears as the last in the layer list.
+      const viewshedGroupLayer = viewElement.map.allLayers.find(
+        (layer) => layer.title === "Viewsheds",
+      );
+      viewshedGroupLayer.add(viewshedLayer, 0);
+      // Add a new slide from current view.
+      Slide.createFrom(viewElement.view).then((slide) => {
+        slide.title.text = "Visibility from street";
+        const button = createSlideButton(slide, slides.length, true);
+        slideSelector.appendChild(button);
+        viewElement.map.presentation.slides.add(slide);
+        // Once done, make the slide selector buttons visible.
+        slideSelector.style.display = "flex";
+      });
+      /**********************************************
+       * Add switch to edit viewsheds interactively
+       *********************************************/
+
+      interactivitySwitch.addEventListener("calciteSwitchChange", toggleInteractivity);
+
+      /**********************************************
+       * Helper functions
+       *********************************************/
+
+      function createSlideButton(slide, index, active) {
+        const segmentedControlItem = document.createElement("calcite-segmented-control-item");
+        // Set the "value" atttribute to slide index to later use it for getting each slide.
+        segmentedControlItem.setAttribute("value", index);
+        segmentedControlItem.textContent = slide.title.text;
+        if (active) {
+          segmentedControlItem.setAttribute("checked", "");
+        }
+        return segmentedControlItem;
+      }
+      // Make all viewshedlayers interactive or not.
+      async function toggleInteractivity() {
+        for (const layer of viewshedGroupLayer.layers) {
+          if (layer.type === "viewshed") {
+            const layerView = await viewElement.whenLayerView(layer);
+            layerView.interactive = !layerView.interactive;
+            promptText.style.display = layerView.interactive ? "flex" : "none";
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

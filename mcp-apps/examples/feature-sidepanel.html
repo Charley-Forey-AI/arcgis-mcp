@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Feature component in a side panel | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <calcite-shell>
+      <calcite-shell-panel slot="panel-start" width-scale="l">
+        <arcgis-feature style="width: 100%" reference-element="my-map"></arcgis-feature>
+      </calcite-shell-panel>
+      <arcgis-map id="my-map" item-id="cab6c53ebefc428191dea9b5d855d060" popup-disabled>
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-expand slot="bottom-right">
+          <arcgis-legend></arcgis-legend>
+        </arcgis-expand>
+      </arcgis-map>
+    </calcite-shell>
+
+    <script type="module">
+      const promiseUtils = await $arcgis.import("@arcgis/core/core/promiseUtils.js");
+      const viewElement = document.querySelector("arcgis-map");
+      const arcgisFeature = document.querySelector("arcgis-feature");
+      await viewElement.viewOnReady();
+      const featureLayer = viewElement.map.allLayers.find((layer) => {
+        return layer.title === "Tract";
+      });
+      featureLayer.outFields = ["*"];
+      const defaultGraphic = {
+        popupTemplate: {
+          title: "Mouse over features to show details...",
+        },
+      };
+      arcgisFeature.graphic = defaultGraphic;
+      const layerView = await viewElement.whenLayerView(featureLayer);
+      let highlight;
+      let objectId;
+      const hitTest = promiseUtils.debounce((event) => {
+        return viewElement.hitTest(event).then((hit) => {
+          const result = hit.results.find((r) => r.graphic.layer === featureLayer);
+          return result
+            ? {
+                graphic: result.graphic,
+                screenPoint: hit.screenPoint,
+              }
+            : null;
+        });
+      });
+      viewElement.addEventListener("arcgisViewPointerMove", async (event) => {
+        try {
+          const hit = await hitTest(event.detail);
+          if (hit) {
+            const newObjectId = hit.graphic?.attributes[featureLayer.objectIdField];
+            if (!newObjectId) {
+              highlight.remove();
+              arcgisFeature.graphic = defaultGraphic;
+            } else if (objectId !== newObjectId) {
+              highlight?.remove();
+              objectId = newObjectId;
+              arcgisFeature.graphic = hit.graphic;
+              highlight = layerView.highlight(hit.graphic);
+            }
+          }
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            console.error("Unexpected hitTest error:", error);
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

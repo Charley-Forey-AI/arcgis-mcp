@@ -1,0 +1,34 @@
+Metadata-Version: 2.4
+Name: arcgis-mapping
+Version: 4.33.1
+Summary: Leverage Python for ArcGIS! This package provides classes for building both interactive 2D maps and immersive 3D scenes.
+Author-email: ArcGIS API for Python Team <support@esri.com>
+License: Esri Master License Agreement
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Framework :: Jupyter
+Classifier: Framework :: Jupyter :: JupyterLab
+Classifier: Framework :: Jupyter :: JupyterLab :: Extensions
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: Other/Proprietary License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Scientific/Engineering :: GIS
+Classifier: Topic :: Scientific/Engineering :: Information Analysis
+Classifier: Topic :: Scientific/Engineering :: Visualization
+Classifier: Topic :: Software Development
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: <3.14,>=3.10
+Requires-Dist: anywidget==0.9.18
+Requires-Dist: arcgis<2.5.0,>=2.4.0
+Requires-Dist: ipywidgets>=8.0.0
+Requires-Dist: jupyterlab<4.4.0,>=4.0.7
+Requires-Dist: pandas<2.4.0,>=2.0.0
+Requires-Dist: pydantic<3,>=2.8.2
+Description-Content-Type: text/markdown
+
+# arcgis-mapping

@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>ImageryLayer - client side chart | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Order: Chart.js → datalabels → SDK for global Chart and ChartDataLabels. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #title-div,
+      #info-div {
+        background-color: white;
+        box-sizing: border-box;
+        color: #4c4c4c;
+        width: 320px;
+      }
+
+      #chart-canvas {
+        display: block;
+        margin: 0 auto;
+      }
+
+      #title-div {
+        padding: 5px 10px;
+
+        #title-text {
+          font-size: 25px;
+        }
+      }
+
+      #chart-legend-list {
+        display: flex;
+        align-items: center;
+        flex-direction: column;
+        list-style-type: none;
+        font-size: 14px;
+        height: 135px;
+        overflow-y: auto;
+
+        li {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          width: 100%;
+        }
+
+        span.color-box {
+          height: 12px;
+          width: 12px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map center="-80, 40.5">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <calcite-button
+        id="area-analysis-toggle"
+        kind="brand"
+        icon-start="rings-smallest"
+        label="Toggle area analysis"
+        slot="top-left"></calcite-button>
+      <calcite-tooltip reference-element="area-analysis-toggle">
+        <span id="tooltip-text"></span>
+      </calcite-tooltip>
+
+      <div id="title-div" slot="top-right">
+        <div id="title-text">Land Cover Types</div>
+        <div>1 mile radius</div>
+      </div>
+      <div id="info-div" slot="top-right" style="display: none">
+        <canvas id="chart-canvas"></canvas>
+        <div id="chart-legend-container">
+          <ul id="chart-legend-list">
+            <template id="chart-legend-item-template">
+              <li>
+                <span class="color-box"></span>
+                <span class="item-text"></span>
+              </li>
+            </template>
+          </ul>
+        </div>
+      </div>
+    </arcgis-map>
+
+    <script type="module">
+      const [ImageryLayer, Graphic, Circle, TileInfo, promiseUtils, reactiveUtils] =
+        await $arcgis.import([
+          "@arcgis/core/layers/ImageryLayer.js",
+          "@arcgis/core/Graphic.js",
+          "@arcgis/core/geometry/Circle.js",
+          "@arcgis/core/layers/support/TileInfo.js",
+          "@arcgis/core/core/promiseUtils.js",
+          "@arcgis/core/core/reactiveUtils.js",
+        ]);
+
+      let cachedMask, cachedBufferDim, landCoverChart, pixelData, removeChartEvents;
+      let pixelValueCount = {}; // Store pixel counts by land cover type.
+      let rasterAttributeGraphics = {};
+      let toolEnabled = true;
+
+      const viewElement = document.querySelector("arcgis-map");
+      const infoDiv = document.getElementById("info-div");
+      const chartCanvas = document.getElementById("chart-canvas");
+      const chartLegendList = document.getElementById("chart-legend-list");
+      const chartLegendItemTemplate = document.getElementById("chart-legend-item-template");
+      const areaAnalysisToggle = document.getElementById("area-analysis-toggle");
+      const tooltipTextElement = document.getElementById("tooltip-text");
+
+      const url =
+        "https://sampleserver6.arcgisonline.com/arcgis/rest/services/NLCDLandCover2001/ImageServer";
+      const enableToolText =
+        "<b>Enable</b> click/drag viewing of land cover types within 1 mile of the pointer.";
+      const disableToolText = "<b>Return</b> to drag navigation on the map.";
+      const black = "rgba(0, 0, 0, 1)";
+
+      await viewElement.componentOnReady(); // Wait for the property methods to be ready.
+      tooltipTextElement.innerHTML = disableToolText;
+
+
+      // Initialize the imagery layer with the LERC format.
+      const imageryLayer = new ImageryLayer({ url, format: "lerc" });
+      viewElement.map.add(imageryLayer);
+      const layerView = await viewElement.whenLayerView(imageryLayer);
+
+
+      const lods = TileInfo.create().lods; // Define Levels of Detail since no basemap is set.
+      viewElement.constraints = { geometry: imageryLayer.fullExtent, minScale: 36978595, lods };
+      viewElement.zoom = 11; // Set zoom after valid LODs are defined.
+
+      const outline = { color: "blue", width: 2 };
+      const circleGraphic = new Graphic({
+        symbol: { type: "simple-fill", color: null, style: "solid", outline },
+      });
+      viewElement.graphics.add(circleGraphic);
+
+      // Convert RGB color channels (0-255) to a hexadecimal string.
+      const rgbToHex = (r, g, b) => {
+        const hexArray = [r, g, b].map((color) => color.toString(16).padStart(2, "0"));
+        return `#${hexArray.join("")}`;
+      };
+
+
+      // Update the chart with pixel counts and colors within one mile of the pointer.
+      const updateLandCoverChart = () => {
+        if (infoDiv.style.display !== "block") infoDiv.style.display = "block";
+        landCoverChart.data.datasets[0].data = [];
+        let landCoverTypeColors = [];
+        let landCoverTypeLabels = [];
+
+        // Use the counter object to set chart data, colors, and labels.
+        for (const index in pixelValueCount) {
+          if (index === "0") {
+            landCoverTypeColors.push("rgba(255, 255, 255, 1)");
+            landCoverTypeLabels.push("NoData");
+          } else {
+            const color = rasterAttributeGraphics[index].hexColor;
+            landCoverTypeColors.push(color);
+            landCoverTypeLabels.push(rasterAttributeGraphics[index].ClassName);
+          }
+          landCoverChart.data.datasets[0].data.push(pixelValueCount[index]);
+        }
+
+        // Apply colors and labels to the chart, then refresh without animation.
+        landCoverChart.data.datasets[0].backgroundColor = landCoverTypeColors;
+        landCoverChart.data.labels = landCoverTypeLabels;
+        landCoverChart.update("none");
+      };
+
+
+      // Create a reusable boolean circle mask.
+      const createCircleMask = (bufferDim, radiusSq) => {
+        const diameter = bufferDim * 2 + 1;
+        const mask = new Array(diameter * diameter);
+
+        for (let row = 0; row < diameter; row++) {
+          const vertDistanceSq = (row - bufferDim) * (row - bufferDim);
+          for (let col = 0; col < diameter; col++) {
+            const horizDistanceSq = (col - bufferDim) * (col - bufferDim);
+            const totalDistanceSq = vertDistanceSq + horizDistanceSq;
+            // Store true if inside circle, false otherwise.
+            mask[row * diameter + col] = totalDistanceSq <= radiusSq;
+          }
+        }
+
+        return { mask, diameter };
+      };
+
+
+      // Get land cover pixel info within one mile of the pointer location.
+      const getLandCoverPixelInfo = promiseUtils.debounce(({ x, y }) => {
+        if (!(pixelData && pixelData.pixelBlock && pixelData.pixelBlock.pixels)) return;
+
+        const { xmin, xmax } = pixelData.extent;
+        const { width, pixels } = pixelData.pixelBlock;
+
+        const center = viewElement.toMap({ x, y }); // Derive mapPoint from pixel coords.
+        const screenX = Math.round(x); // Store integer for screen pixel coord x.
+        const screenY = Math.round(y); // Store integer for screen pixel coord y.
+
+        const pixelMeterSizeX = Math.abs(xmax - xmin) / width;
+        const bufferDim = Math.ceil(1609 / pixelMeterSizeX); // Find pixels per mile.
+
+        // Determine the two-mile extent around the pointer location.
+        const bufferLeftPx = screenX - bufferDim < 0 ? 0 : screenX - bufferDim;
+        const bufferTopPx = screenY - bufferDim < 0 ? 0 : screenY - bufferDim;
+        const startPixel = bufferTopPx * width + bufferLeftPx;
+        const bandOne = pixels[0]; // Store the single band of land cover codes.
+        const radiusSq = bufferDim * bufferDim;
+
+        // Reuse existing mask; only rebuild if size change (e.g., on zoom).
+        if (bufferDim !== cachedBufferDim) {
+          cachedMask = createCircleMask(bufferDim, radiusSq);
+          cachedBufferDim = bufferDim;
+        }
+
+        const { mask, diameter } = cachedMask;
+        let oneMilePixelValues = [];
+
+        // Loop over bounding box, using mask to skip irrelevant pixels.
+        // Raster is 1D in memory but represents a 2D grid.
+        // (row * width) moves down; + col moves right to get pixel index.
+        for (let rowOffset = 0; rowOffset < diameter; rowOffset++) {
+          const rowStartIndex = startPixel + rowOffset * width;
+          for (let colOffset = 0; colOffset < diameter; colOffset++) {
+            if (mask[rowOffset * diameter + colOffset]) {
+              const pixelIndex = rowStartIndex + colOffset;
+              const pixelValue = bandOne[pixelIndex];
+              if (pixelValue !== undefined) {
+                oneMilePixelValues.push(pixelValue);
+              }
+            }
+          }
+        }
+
+        // Clear counts, then tally pixel values in the 1‑mile area.
+        pixelValueCount = {};
+        for (let i = 0; i < oneMilePixelValues.length; i++) {
+          const value = oneMilePixelValues[i];
+          pixelValueCount[value] = 1 + (pixelValueCount[value] || 0);
+        }
+
+        circleGraphic.geometry = new Circle({ center, radius: 1, radiusUnit: "miles" });
+        updateLandCoverChart();
+      });
+
+
+      // Build chart legend entries with the correct colors and labels.
+      const htmlChartLegendPlugin = {
+        id: "chart-legend-container",
+        afterUpdate: (chart) => {
+          const items = chart.options.plugins.legend.labels.generateLabels(chart);
+          const legendNodes = items.map((item) => {
+            const legendItem = chartLegendItemTemplate.content.cloneNode(true);
+            legendItem.querySelector(".color-box").style.background = item.fillStyle;
+            legendItem.querySelector(".item-text").textContent = item.text;
+            return legendItem;
+          });
+          chartLegendList.replaceChildren(...legendNodes);
+        },
+      };
+
+      // Create a land cover chart with custom legend and percentage labels.
+      const datasets = [{ data: [], backgroundColor: [], borderColor: black, borderWidth: 0.5 }];
+      const createLandCoverChart = () => {
+        landCoverChart = new Chart(chartCanvas, {
+          type: "doughnut",
+          data: { labels: [], datasets },
+          options: {
+            animation: { animateRotate: false },
+            cutout: "35%",
+            responsive: false,
+            plugins: {
+              title: { display: true, text: "Land Cover Types" },
+              htmlLegend: { containerID: "chart-legend-container" },
+              legend: { display: false },
+              datalabels: {
+                color: black,
+                textStrokeColor: "white",
+                textStrokeWidth: 3,
+                formatter: (value, context) => {
+                  const { datasets } = context.chart.data;
+                  const sum = datasets[0].data.reduce((a, b) => a + b, 0);
+                  const percentage = Math.round((value / sum) * 100);
+                  return percentage >= 10 ? `${percentage}%` : "";
+                },
+              },
+            },
+          },
+          plugins: [htmlChartLegendPlugin, ChartDataLabels],
+        });
+      };
+
+      // Enable or disable event listeners that make the analysis tool interactive.
+      const handleEventBinding = (bind = true) => {
+        if (bind) {
+          removeChartEvents = viewElement.view.on(["drag", "click"], (event) => {
+            event.stopPropagation();
+            if (pixelData) getLandCoverPixelInfo(event);
+          });
+        } else if (!bind && removeChartEvents) {
+          removeChartEvents.remove();
+          removeChartEvents = null;
+        }
+      };
+
+
+      const initializeLayerView = (layerView) => {
+        // Store the pixel data when the LayerView finishes updating.
+        reactiveUtils.watch(
+          () => layerView.updating,
+          (updating) => (pixelData = !updating ? layerView.pixelData : null),
+        );
+
+        handleEventBinding(); // Enable the land cover tool.
+
+        const graphics = imageryLayer.serviceRasterInfo.attributeTable.features;
+
+        // Extract color and class name from each graphic feature.
+        graphics.forEach(({ attributes }) => {
+          const { Red, Green, Blue, ClassName, Value } = attributes;
+          const hexColor = rgbToHex(Red, Green, Blue);
+          rasterAttributeGraphics[Value] = { ClassName, hexColor };
+        });
+
+        createLandCoverChart(); // Initialize the land cover doughnut chart.
+      };
+
+      initializeLayerView(layerView);
+
+
+      const handleToolToggle = (button) => {
+        const enable = !toolEnabled;
+
+        // Set button style and add/remove the circle graphic.
+        button.kind = enable ? "brand" : "neutral";
+        viewElement.graphics[enable ? "add" : "remove"](circleGraphic);
+
+        // Update the tooltip, bind/unbind events, and flip state.
+        tooltipTextElement.innerHTML = enable ? disableToolText : enableToolText;
+        handleEventBinding(enable);
+        toolEnabled = enable;
+      };
+
+      areaAnalysisToggle.addEventListener("click", (event) => {
+        handleToolToggle(event.target);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Expand component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene basemap="satellite">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-expand expanded slot="top-right">
+        <arcgis-basemap-gallery></arcgis-basemap-gallery>
+      </arcgis-expand>
+    </arcgis-scene>
+
+    <script type="module">
+      const reactiveUtils = await $arcgis.import("@arcgis/core/core/reactiveUtils.js");
+
+      const basemapGallery = document.querySelector("arcgis-basemap-gallery");
+      const expand = document.querySelector("arcgis-expand");
+      const viewElement = document.querySelector("arcgis-scene");
+
+      await viewElement.viewOnReady();
+      // close the expand whenever a basemap is selected
+      // on mobile devices
+      reactiveUtils.watch(
+        () => basemapGallery.activeBasemap,
+        () => {
+          const mobileSize = viewElement.offsetWidth < 500 || viewElement.offsetHeight < 500;
+          if (mobileSize) {
+            expand.collapse();
+          }
+        },
+      );
+    </script>
+  </body>
+</html>

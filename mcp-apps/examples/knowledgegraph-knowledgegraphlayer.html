@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+  <title>Working with KnowledgeGraphLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+  <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+  <script type="module" src="https://js.arcgis.com/5.0/"></script>
+<style>
+  html,
+  body{
+    height:100%;
+    margin:0;
+  }
+</style>
+  <script type="module">
+    const [knowledgeGraphService, KnowledgeGraphLayer] = await $arcgis.import([
+      "@arcgis/core/rest/knowledgeGraphService.js",
+      "@arcgis/core/layers/KnowledgeGraphLayer.js"
+    ]);
+
+    /**
+     * Credentials to sign in to the knowledge graph service:
+     * username: viewer01
+     * password: I68VGU^nMurF
+     */
+
+    // set knowledge graph with url to service
+    const url =
+      "https://sampleserver7.arcgisonline.com/server/rest/services/Hosted/BumbleBees/KnowledgeGraphServer";
+    const knowledgeGraph = await knowledgeGraphService.fetchKnowledgeGraph(url);
+
+    const mapComponent = document.querySelector("arcgis-map")
+    await mapComponent.viewOnReady();
+    const map = mapComponent.map
+
+    //query the knowledge graph to get only the research grade observations
+    const results = await knowledgeGraphService.executeQuery(knowledgeGraph, {
+      openCypherQuery: `MATCH (o:Observation{quality_grade: "research"}) RETURN o`,
+    });
+    //create a js map object of the ids and named types from the records returned from the query to include in the layer.
+    let members = new Map();
+    let memberslist = new Map();
+    for (const result of results.resultRows) {
+      for (const index in result) {
+        const record = result[index];
+        if (!memberslist.has(record.typeName)) {
+          memberslist.set(record.typeName, { useAllData: false, members: new Map() });
+        }
+        memberslist.get(record.typeName).members.set(record.id, { id: record.id });
+      }
+    }
+
+    //only create a sublayer for the specified named types.
+    const inclusionDef = {
+      generateAllSublayers: false,
+      namedTypeDefinitions: memberslist,
+    };
+
+    //create the layer
+    //the inclusionModeDefinition is an optional property for layer construction. If not defined, all records in the graph will be included and the knowledge graph
+    // layer will be dynamic.
+    //Any non spatial entity types and all relationship types will be included as table sublayers and will not be drawn on the map
+    const kgLayer = new KnowledgeGraphLayer({
+      url: url,
+      inclusionModeDefinition: inclusionDef, //optional
+    });
+    //Once the layer has loaded, you can enable popups or change the configuration of a specific sublayer.
+    //This is optional
+    await kgLayer.load();
+
+    kgLayer.layers.forEach((sublayer) => {
+      sublayer.popupTemplate = sublayer.createPopupTemplate();
+    });
+    //add layer to map
+    map.add(kgLayer);
+
+  </script>
+</head>
+
+<body>
+  <arcgis-map basemap="topo">
+    <arcgis-layer-list slot="top-right"></arcgis-layer-list>
+      <arcgis-legend slot="bottom-left"></arcgis-legend>
+  </arcgis-map>
+</body>
+
+</html>

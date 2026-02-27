@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Elevation options | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #elevationPanel {
+        width: 200px;
+      }
+
+      calcite-label {
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-scene item-id="82b1268e2dda4c0bb04d2f48e38652b8">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <arcgis-layer-list slot="bottom-left"></arcgis-layer-list>
+      <calcite-card id="elevationPanel" slot="top-right">
+        <calcite-label alignment="start" scale="s">
+          Mode
+          <calcite-select id="modeSelect" scale="s">
+            <calcite-option value="on-the-ground">on-the-ground</calcite-option>
+            <calcite-option value="relative-to-ground" selected>relative-to-ground</calcite-option>
+            <calcite-option value="relative-to-scene">relative-to-scene</calcite-option>
+            <calcite-option value="absolute-height">absolute-height</calcite-option>
+          </calcite-select>
+        </calcite-label>
+
+        <calcite-label alignment="start" scale="s">
+          Offset
+          <calcite-input id="offsetInput" type="number" value="0" scale="s"></calcite-input>
+        </calcite-label>
+
+        <calcite-label alignment="start" scale="s">
+          Expression
+          <calcite-input
+            id="featureExpressionInput"
+            type="text"
+            value="Geometry($feature).z * 10"
+            scale="s"></calcite-input>
+        </calcite-label>
+
+        <calcite-label alignment="start" scale="s">
+          Unit
+          <calcite-select id="unitSelect" scale="s">
+            <calcite-option value="feet">feet</calcite-option>
+            <calcite-option value="kilometers">kilometers</calcite-option>
+            <calcite-option value="meters" selected>meters</calcite-option>
+          </calcite-select>
+        </calcite-label>
+      </calcite-card>
+    </arcgis-scene>
+
+    <script type="module">
+      /*****************************************************************
+       * Get a reference to the HTML elements
+       *****************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+      const modeSelect = document.querySelector("#modeSelect");
+      const offsetInput = document.querySelector("#offsetInput");
+      const featureExpressionInput = document.querySelector("#featureExpressionInput");
+      const unitSelect = document.querySelector("#unitSelect");
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+
+      // Find the "Balloon layer" in the WebScene's layers
+      const balloonLayer = viewElement.map.layers.find((layer) => layer.title === "Balloon layer");
+
+      function updateElevationInfo() {
+        const mode = modeSelect.value;
+
+        // Disable inputs if mode is "on-the-ground"
+        const isDisabled = mode === "on-the-ground";
+        offsetInput.disabled = isDisabled;
+        featureExpressionInput.disabled = isDisabled;
+        unitSelect.disabled = isDisabled;
+
+        // Construct the elevationInfo object from control values
+        const newElevationInfo = {
+          mode: mode,
+          offset: Number(offsetInput.value),
+          featureExpressionInfo: {
+            expression: featureExpressionInput.value || "0",
+          },
+          unit: unitSelect.value,
+        };
+
+        balloonLayer.elevationInfo = newElevationInfo;
+      }
+
+      // Event listeners for Calcite component changes
+      modeSelect.addEventListener("calciteSelectChange", updateElevationInfo);
+      unitSelect.addEventListener("calciteSelectChange", updateElevationInfo);
+      offsetInput.addEventListener("calciteInputChange", updateElevationInfo);
+      featureExpressionInput.addEventListener("calciteInputChange", updateElevationInfo);
+
+      // Set the initial layer elevation
+      updateElevationInfo();
+    </script>
+  </body>
+</html>

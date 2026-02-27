@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Event explorer / watch properties | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      arcgis-scene {
+        display: block;
+        height: 100%;
+        width: 100%;
+      }
+
+      .container {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        height: 100vh;
+        position: relative;
+      }
+
+      .menu {
+        height: 100%;
+        width: 270px;
+        min-width: 250px;
+        --calcite-font-size: 0.85rem;
+      }
+
+      .event,
+      .property {
+        transition: background-color 0.5s ease-out;
+        padding-bottom: 2px;
+        opacity: 0.2;
+        font-size: var(--calcite-font-size);
+        line-height: 1.3em;
+      }
+
+      .active {
+        opacity: 1;
+        background-color: #99ccff;
+      }
+
+      .inactive {
+        opacity: 1;
+        background-color: white;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <arcgis-scene
+        basemap="topo-vector"
+        ground="world-elevation"
+        camera-position="-101.17, 20.76793656, 12908164.47184"
+        camera-heading="0.00"
+        camera-tilt="0.5">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+        <arcgis-compass slot="top-left"></arcgis-compass>
+      </arcgis-scene>
+
+      <calcite-panel class="menu" scale="s">
+        <calcite-block-group scale="s">
+          <calcite-block expanded id="events" heading="Component Events">
+            <a
+              slot="actions-end"
+              href="https://developers.arcgis.com/javascript/latest/references/map-components/components/arcgis-scene/#events"
+              target="_blank">
+              <calcite-action scale="s" text="Information" icon="information"></calcite-action>
+            </a>
+          </calcite-block>
+          <calcite-block expanded id="properties" heading="Component Properties">
+            <a
+              slot="actions-end"
+              href="https://developers.arcgis.com/javascript/latest/references/map-components/components/arcgis-scene/#properties"
+              target="_blank">
+              <calcite-action scale="s" text="Information" icon="information"></calcite-action>
+            </a>
+          </calcite-block>
+        </calcite-block-group>
+      </calcite-panel>
+    </div>
+
+    <script type="module">
+      const [reactiveUtils] = await $arcgis.import(["@arcgis/core/core/reactiveUtils.js"]);
+      const viewElement = document.querySelector("arcgis-scene");
+      const events = [
+        "arcgisViewPointerEnter",
+        "arcgisViewPointerLeave",
+        "arcgisViewPointerMove",
+        "arcgisViewPointerDown",
+        "arcgisViewPointerUp",
+        "arcgisViewClick",
+        "arcgisViewImmediateClick",
+        "arcgisViewDoubleClick",
+        "arcgisViewImmediateDoubleClick",
+        "arcgisViewMouseWheel",
+        "arcgisViewDrag",
+        "arcgisViewHold",
+        "arcgisViewKeyDown",
+        "arcgisViewKeyUp",
+      ];
+      // For the purpose of the sample, this is only a selection of properties,
+      // but any property on the component can be watched for.
+      const properties = [
+        "interacting",
+        "updating",
+        "resolution",
+        "scale",
+        "zoom",
+        "stationary",
+        "camera.position.z",
+        "camera.tilt",
+        "camera.heading",
+      ];
+      await viewElement.viewOnReady();
+      // Dynamically create the table of events and properties from the defined array.
+      const createTables = () => {
+        const eventsTable = document.getElementById("events");
+        let content = eventsTable.innerHTML;
+        for (let i = 0; i < events.length; i++) {
+          content += '<div class="event" id="' + events[i] + '">' + events[i];
+          content += "</div>";
+        }
+        eventsTable.innerHTML = content;
+        const propertiesTable = document.getElementById("properties");
+        content = propertiesTable.innerHTML;
+        for (let i = 0; i < properties.length; i++) {
+          content +=
+            '<div class="property" id="' + properties[i] + '">' + properties[i] + " = </div>";
+        }
+        propertiesTable.innerHTML = content;
+      };
+      const setupEventListener = (element, name) => {
+        const eventRow = document.getElementById(name);
+        element.addEventListener(name, () => {
+          eventRow.className = "event active";
+          if (eventRow.highlightTimeout) {
+            clearTimeout(eventRow.highlightTimeout);
+          }
+          eventRow.highlightTimeout = setTimeout(() => {
+            // After a timeout of one second disable the highlight.
+            eventRow.className = "event inactive";
+          }, 1000);
+        });
+      };
+      const updatePropertiesRow = (value, propertiesRow) => {
+        propertiesRow.className = "property active";
+        propertiesRow.innerHTML = propertiesRow.innerHTML.substring(
+          0,
+          propertiesRow.innerHTML.indexOf(" = "),
+        );
+        // Set the text to the received value.
+        const formattedValue = typeof value === "number" ? value.toFixed(4) : value;
+        propertiesRow.innerHTML += " = " + formattedValue.toString();
+        if (propertiesRow.highlightTimeout) {
+          clearTimeout(propertiesRow.highlightTimeout);
+        }
+        propertiesRow.highlightTimeout = setTimeout(() => {
+          // After a timeout of one second disable the highlight.
+          propertiesRow.className = "property inactive";
+        }, 1000);
+      };
+      const setupPropertiesListener = (view, name) => {
+        const propertiesRow = document.getElementById(name);
+        const nameParts = name.split(".");
+        nameParts.length === 1 &&
+          reactiveUtils.watch(
+            () => view[nameParts[0]],
+            (value) => updatePropertiesRow(value, propertiesRow),
+          );
+        nameParts.length === 2 &&
+          reactiveUtils.watch(
+            () => view[nameParts[0]][nameParts[1]],
+            (value) => updatePropertiesRow(value, propertiesRow),
+          );
+        nameParts.length === 3 &&
+          reactiveUtils.watch(
+            () => view[nameParts[0]][nameParts[1]][nameParts[2]],
+            (value) => updatePropertiesRow(value, propertiesRow),
+          );
+      };
+      // Create the tables for the events and properties.
+      createTables();
+      // setup all view events defined in the array
+      for (let i = 0; i < events.length; i++) {
+        setupEventListener(viewElement, events[i]);
+      }
+      // Setup all watch properties defined in the array.
+      for (let i = 0; i < properties.length; i++) {
+        setupPropertiesListener(viewElement, properties[i]);
+      }
+    </script>
+  </body>
+</html>

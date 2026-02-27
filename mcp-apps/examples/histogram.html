@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Histogram component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background-color: #6cc2ea;
+      }
+
+      arcgis-histogram {
+        --arcgis-histogram-bar-color: rgba(221, 68, 65, 0.8);
+        height: 200px;
+        width: 300px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <calcite-panel
+        slot="top-right"
+        id="title"
+        heading="Total Population"
+        description="Censo Mexico 2020">
+      </calcite-panel>
+      <calcite-panel slot="bottom-left" heading="Population">
+        <calcite-block expanded label="histogram block">
+          <calcite-label>
+            Normalization type:
+            <calcite-select id="normalization-type">
+              <calcite-option value="none">None</calcite-option>
+              <calcite-option value="log" selected>Log</calcite-option>
+              <calcite-option value="natural-log">Natural log</calcite-option>
+              <calcite-option value="square-root">Square root</calcite-option>
+              <calcite-option value="percent-of-total">Percent of total</calcite-option>
+            </calcite-select>
+          </calcite-label>
+          <arcgis-histogram layout="horizontal"></arcgis-histogram>
+          <div>
+            <span style="float: left" id="min"></span>
+            <span style="float: right" id="max"></span>
+          </div>
+        </calcite-block>
+      </calcite-panel>
+    </arcgis-map>
+
+    <script type="module">
+      const [Map, FeatureLayer, histogram, summaryStatistics, Color] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/smartMapping/statistics/histogram.js",
+        "@arcgis/core/smartMapping/statistics/summaryStatistics.js",
+        "@arcgis/core/Color.js",
+      ]);
+
+      const viewElement = document.querySelector("arcgis-map");
+      const histogramElement = document.querySelector("arcgis-histogram");
+
+      const basemapLayer = new FeatureLayer({
+        portalItem: {
+          id: "2b93b06dc0dc4e809d3c8db5cb96ba69",
+        },
+        effect: "drop-shadow(0px 0px 15px #cae7f1)",
+        legendEnabled: false,
+        popupEnabled: false,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [225, 225, 225, 1],
+            outline: {
+              color: "white",
+              width: 0.5,
+            },
+          },
+        },
+      });
+
+      // change the default highlight group object options
+      const layerColor = new Color("rgba(221, 68, 65, 0.8)");
+      const layer = new FeatureLayer({
+        portalItem: {
+          id: "5f4d25bbc83e440c98585f3feb179a0c",
+        },
+        effect: "drop-shadow(2px 2px 2px gray)",
+        popupTemplate: {
+          title: "{nom_mun}, {nom_ent}",
+          content: "Population: {pobtot}",
+          fieldInfos: [
+            {
+              fieldName: "pobtot",
+              format: {
+                places: 0,
+                digitSeparator: true,
+              },
+            },
+          ],
+        },
+        renderer: {
+          type: "class-breaks",
+          backgroundFillSymbol: {
+            type: "simple-fill",
+            color: [240, 240, 240, 1],
+            outline: {
+              width: 0.3,
+              color: [200, 200, 200, 0.5],
+            },
+          },
+          field: "pobtot",
+          classBreakInfos: [
+            {
+              minValue: -99999999999,
+              maxValue: 99999999999,
+              symbol: {
+                type: "simple-marker",
+                color: layerColor,
+                size: 3,
+                outline: {
+                  width: 0.5,
+                  color: "rgba(255,255,255,0.5)",
+                },
+              },
+            },
+          ],
+          visualVariables: [
+            {
+              type: "size",
+              field: "pobtot",
+              minDataValue: 10000,
+              maxDataValue: 2000000,
+              minSize: 3,
+              maxSize: 40,
+            },
+          ],
+        },
+      });
+
+      // set map component's spatial reference and constraints
+      viewElement.spatialReference = {
+        wkid: 6368,
+      };
+
+      viewElement.constraints = {
+        minScale: 11443105,
+        geometry: {
+          type: "extent",
+          spatialReference: {
+            wkid: 6368,
+          },
+          xmin: -1464958,
+          ymin: 1654007,
+          xmax: 3006896,
+          ymax: 3730982,
+        },
+      };
+
+      viewElement.map = new Map({
+        basemap: {
+          baseLayers: [basemapLayer],
+        },
+        layers: [layer],
+      });
+
+      // wait for the map component to be ready
+      await viewElement.viewOnReady();
+
+      // set the map's viewpoint to Mexico
+      viewElement.viewpoint = {
+        rotation: 0,
+        scale: 11443105,
+        targetGeometry: {
+          type: "point",
+          spatialReference: {
+            wkid: 6368,
+          },
+          x: 770969.1489199842,
+          y: 2692494.7942999783,
+        },
+      };
+
+      viewElement.highlights.forEach((option) => {
+        if (option.name === "default") {
+          ((option.fillOpacity = 0.1),
+            (option.haloColor = layerColor),
+            (option.color = layerColor));
+        }
+      });
+
+      const normalizationTypeElement = document.getElementById("normalization-type");
+      createHistogram();
+
+      normalizationTypeElement.addEventListener("calciteSelectChange", createHistogram);
+
+      async function fetchStats(field) {
+        const normalizationType =
+          normalizationTypeElement.value === "none" ? null : normalizationTypeElement.value;
+        const params = {
+          layer,
+          field,
+          numBins: 30,
+          normalizationType,
+          normalizationTotal: normalizationType === "percent-of-total" ? 126014024 : null,
+          minValue: 0,
+          maxValue: !normalizationType
+            ? 75000
+            : normalizationType === "percent-of-total"
+              ? 0.1
+              : null,
+        };
+
+        const result = await Promise.all([histogram(params), summaryStatistics(params)]);
+        return result;
+      }
+
+      let histogramWidget;
+
+      async function createHistogram() {
+        // fetches summary statistics and histogram bins
+        // from the feature service
+        fetchStats("pobtot")
+          .then((response) => {
+            const histogramResult = response[0];
+            const statsResult = response[1];
+
+            const normType = normalizationTypeElement.value;
+
+            const minElement = document.getElementById("min");
+            const maxElement = document.getElementById("max");
+            minElement.textContent = formatLabel(histogramResult.minValue);
+            const suffix = normType === "none" || normType === "percent-of-total" ? "+" : "";
+            maxElement.textContent = formatLabel(histogramResult.maxValue) + suffix;
+
+            // Update the histogram component with the new data
+            histogramElement.min = histogramResult.minValue;
+            histogramElement.max = histogramResult.maxValue;
+            histogramElement.bins = histogramResult.bins;
+            histogramElement.average = formatLabel(statsResult.avg);
+          })
+          .catch((error) => {
+            console.error(error);
+          });
+      }
+
+      function formatLabel(value) {
+        if (normalizationTypeElement.value === "none") {
+          return Math.round(value).toLocaleString();
+        }
+        if (normalizationTypeElement.value === "percent-of-total") {
+          return (value * 100).toLocaleString() + "%";
+        }
+        return value.toLocaleString();
+      }
+    </script>
+  </body>
+</html>

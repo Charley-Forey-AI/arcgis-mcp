@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>SceneLayer with time filter | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #temporal-filter {
+        width: 300px;
+        overflow: hidden;
+      }
+
+      arcgis-time-slider {
+        position: absolute;
+        left: 5%;
+        right: 5%;
+        bottom: 20px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="5e8fbb7e4ad244d5ae60ca09f21aad63">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <arcgis-legend slot="top-right" legend-style="classic"></arcgis-legend>
+      <arcgis-time-slider mode="instant"></arcgis-time-slider>
+      <calcite-card id="temporal-filter" slot="top-right">
+        <span id="time-period" slot="description">no time filter</span>
+        <calcite-label slot="heading" layout="inline">
+          <calcite-switch id="temporal-filter-switch" checked></calcite-switch> Temporal filter
+        </calcite-label>
+      </calcite-card>
+    </arcgis-scene>
+
+    <script type="module">
+      const [TimeExtent, TimeInterval, reactiveUtils] = await $arcgis.import([
+        "@arcgis/core/time/TimeExtent.js",
+        "@arcgis/core/time/TimeInterval.js",
+        "@arcgis/core/core/reactiveUtils.js",
+      ]);
+
+      /*****************************************************************
+       * Get references to the Scene and Time Slider components
+       *****************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+      const timeSlider = document.querySelector("arcgis-time-slider");
+
+      timeSlider.fullTimeExtent = new TimeExtent({
+        start: new Date("2019-01-21"),
+        end: new Date("2031-01-21"),
+      });
+
+      timeSlider.timeExtent = new TimeExtent({
+        start: new Date("2028-01-21"),
+        end: new Date("2028-01-21"),
+      });
+
+      timeSlider.stops = {
+        interval: new TimeInterval({
+          value: 1,
+          unit: "years",
+        }),
+      };
+
+      await viewElement.viewOnReady();
+      await timeSlider.componentOnReady();
+
+      reactiveUtils.watch(
+        () => viewElement.timeExtent,
+        (timeExtent) => {
+          const infoTextElement = document.getElementById("time-period");
+          let activePeriod = "No Time Filtering";
+          if (timeExtent?.start) {
+            activePeriod = "Current/Past Time";
+            if (timeExtent.start >= new Date("2030-01-21")) {
+              activePeriod = "Future Time (Near Term)";
+            } else if (timeExtent.start >= new Date("2028-01-21")) {
+              activePeriod = "Future Time (Medium Term)";
+            }
+          }
+          infoTextElement.textContent = activePeriod;
+        },
+        { initial: true },
+      );
+
+      document
+        .getElementById("temporal-filter-switch")
+        .addEventListener("calciteSwitchChange", updateTimeEnabled);
+
+      function updateTimeEnabled(event) {
+        timeSlider.disabled = !event.target.checked;
+        viewElement.timeExtent = event.target.checked
+          ? new TimeExtent({
+              start: new Date("2028-01-21"),
+              end: new Date("2028-01-21"),
+            })
+          : null;
+      }
+    </script>
+  </body>
+</html>

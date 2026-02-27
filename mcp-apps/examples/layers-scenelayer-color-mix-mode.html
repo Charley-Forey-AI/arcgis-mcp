@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Coloring options for textured buildings | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #colorMixMode {
+        background-color: white;
+        padding: 12px 12px 0px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="03a9607d96244883af64c7f8c7e5de1b">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <div slot="bottom-left">
+        <calcite-radio-button-group id="colorMixMode" name="Options" layout="vertical" scale="m">
+          <calcite-label layout="inline">
+            <calcite-radio-button id="original" checked></calcite-radio-button>
+            Buildings with original texture
+          </calcite-label>
+          <calcite-label layout="inline">
+            <calcite-radio-button id="select"></calcite-radio-button>
+            Show commercial buildings
+          </calcite-label>
+          <calcite-label layout="inline">
+            <calcite-radio-button id="emphasize"></calcite-radio-button>
+            Emphasize commercial buildings
+          </calcite-label>
+          <calcite-label layout="inline">
+            <calcite-radio-button id="desaturate"></calcite-radio-button>
+            Desaturate texture
+          </calcite-label>
+          <calcite-label layout="inline">
+            <calcite-radio-button id="replace"></calcite-radio-button>
+            Remove texture
+          </calcite-label>
+        </calcite-radio-button-group>
+      </div>
+    </arcgis-scene>
+
+    <script type="module">
+      const SceneLayer = await $arcgis.import("@arcgis/core/layers/SceneLayer.js");
+
+      // Get a reference to the Scene component
+      const viewElement = document.querySelector("arcgis-scene");
+
+      // Create a SceneLayer instance with textured buildings
+      const layer = new SceneLayer({
+        portalItem: {
+          id: "fdfa7e3168e74bf5b846fc701180930b",
+        },
+        title: "Buildings in Helsinki",
+      });
+
+      // Wait for the view to fully initialize
+      await viewElement.viewOnReady();
+
+      // Remove the default renderer of the SceneLayer item so that the original renderer is shown
+      layer.renderer = null;
+      // Add the layer to the scene
+      viewElement.map.add(layer);
+
+      // Add event listener on the buttons to change the renderer and the colorMixMode
+      document
+        .getElementById("colorMixMode")
+        .addEventListener("calciteRadioButtonGroupChange", (event) => {
+          setRenderer(event.target.selectedItem.id);
+        });
+
+      // Returns a UniqueValueRenderer for different styles of highlighting buildings
+      function getUniqueValueRenderer(color, colorMixMode) {
+        return {
+          type: "unique-value", // autocasts as new UniqueValueRenderer()
+          field: "usage",
+          defaultSymbol: {
+            type: "mesh-3d", // autocasts as new MeshSymbol3D()
+            symbolLayers: [
+              {
+                type: "fill", // autocasts as new FillSymbol3DLayer()
+                material: {
+                  color: [230, 230, 230, 0.7],
+                  // We are not interested in these buildings, but we keep them for context
+                  // We want to remove the texture so we set the colorMixMode to replace
+                  colorMixMode: "replace",
+                },
+              },
+            ],
+          },
+          uniqueValueInfos: [
+            {
+              value: "general or commercial",
+              label: "commercial buildings",
+              symbol: {
+                type: "mesh-3d", // autocasts as new MeshSymbol3D()
+                symbolLayers: [
+                  {
+                    type: "fill", // autocasts as new FillSymbol3DLayer()
+                    material: {
+                      color: color,
+                      colorMixMode: colorMixMode,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+          legendOptions: {
+            title: "Usage",
+          },
+        };
+      }
+
+      // This function sets a new renderer on the layer depending on selected option
+      function setRenderer(type) {
+        if (type === "original") {
+          layer.renderer = null;
+        } else if (type === "select") {
+          // In this case we want to keep the texture unmodified for the buildings we are interested in
+          // color and colorMixMode should be set to null, otherwise they default to "white" and "multiply"
+          layer.renderer = getUniqueValueRenderer(null, null);
+        } else if (type === "emphasize") {
+          // We apply a color to make buildings stand out, but we also want to keep the texture, so we use tint
+          layer.renderer = getUniqueValueRenderer("#F5D5A9", "tint");
+        } else {
+          // Applying a white color with tint option will desaturate the texture
+          // Use replace if the texture should be removed
+          const colorMixMode = type === "desaturate" ? "tint" : "replace";
+
+          // Create a SimpleRenderer and apply it to the layer
+          const locationRenderer = {
+            type: "simple", // autocasts as new SimpleRenderer()
+            symbol: {
+              type: "mesh-3d", // autocasts as new MeshSymbol3D()
+              symbolLayers: [
+                {
+                  type: "fill", // autocasts as new FillSymbol3DLayer()
+                  material: {
+                    color: "white",
+                    colorMixMode: colorMixMode,
+                  },
+                },
+              ],
+            },
+          };
+          layer.renderer = locationRenderer;
+        }
+      }
+    </script>
+  </body>
+</html>

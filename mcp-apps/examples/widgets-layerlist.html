@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>LayerList widget | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css" />
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        height: 100%;
+        margin: 0;
+      }
+      calcite-list,
+      calcite-button {
+        --calcite-color-text-1: #3c83b7;
+        --calcite-color-text-2: #3c83b7;
+        --calcite-color-text-3: #3c83b7;
+      }
+    </style>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <script type="module">
+      const [SceneView, LayerList, WebScene] = await $arcgis.import([
+        "@arcgis/core/views/SceneView.js",
+        "@arcgis/core/widgets/LayerList.js",
+        "@arcgis/core/WebScene.js",
+      ]);
+
+      const scene = new WebScene({
+        portalItem: {
+          // autocasts as new PortalItem()
+          id: "adfad6ee6c6043238ea64e121bb6429a",
+        },
+      });
+
+      const view = new SceneView({
+        container: "viewDiv",
+        map: scene,
+      });
+
+      view.when(() => {
+        const layerList = new LayerList({
+          view: view,
+        });
+
+        // Add widget to the top right corner of the view
+        view.ui.add(layerList, "top-right");
+      });
+    </script>
+  </head>
+
+  <body class="calcite">
+    <div id="viewDiv"></div>
+  </body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Add labels to a FeatureLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map item-id="372b7caa8fe340b0a6300df93ef18a7e" center="-116.925, 34.2501" zoom="12">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+    </arcgis-map>
+
+    <script type="module">
+      const FeatureLayer = await $arcgis.import("@arcgis/core/layers/FeatureLayer.js");
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.viewOnReady();
+
+      // autocasts as new LabelClass()
+      const labelClass = {
+        symbol: {
+          type: "text", // autocasts as new TextSymbol()
+          color: "green",
+          backgroundColor: [213, 184, 255, 0.75],
+          borderLineColor: "green",
+          borderLineSize: 1,
+          yoffset: 5,
+          font: {
+            family: "Playfair Display", // autocasts as new Font()
+            size: 12,
+            weight: "bold",
+          },
+        },
+        labelPlacement: "above-center",
+        labelExpressionInfo: {
+          expression: "$feature.MARKER_ACTIVITY",
+        },
+      };
+
+      const featureLayer = new FeatureLayer({
+        portalItem: {
+          id: "6012738cd1c74582a5f98ea30ae9876f", // autocasts as new PortalItem()
+        },
+        labelingInfo: [labelClass],
+      });
+
+      viewElement.map.add(featureLayer);
+
+      viewElement.constraints = { minScale: 300000 };
+    </script>
+  </body>
+</html>

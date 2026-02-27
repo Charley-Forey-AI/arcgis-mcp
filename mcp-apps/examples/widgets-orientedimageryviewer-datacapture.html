@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Data Capture in OrientedImageryViewer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css" />
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        height: 100%;
+        margin: 0;
+      }
+
+      #oi-container {
+        top: 8px;
+        right: 8px;
+        position: absolute;
+        height: 80%;
+        width: 30%;
+      }
+    </style>
+
+    <script type="module">
+      const [WebMap, MapView, OrientedImageryViewer, OrientedImageryLayer, Popup] =
+        await $arcgis.import([
+          "@arcgis/core/WebMap.js",
+          "@arcgis/core/views/MapView.js",
+          "@arcgis/core/widgets/OrientedImageryViewer.js",
+          "@arcgis/core/layers/OrientedImageryLayer.js",
+          "@arcgis/core/widgets/Popup.js",
+        ]);
+
+      // create an instance of the webmap in mapview
+      const map = new WebMap({
+        portalItem: {
+          id: "2fa457d973b1401d90cceccd31c64c0b",
+        },
+      });
+
+      const view = new MapView({
+        map,
+        container: "viewDiv",
+      });
+
+      // create a new instance of the oriented imagery viewer widget
+      const orientedImageryViewer = new OrientedImageryViewer({
+        view,
+        disabled: false,
+        container: "oi-container",
+      });
+
+      // set imageOverlaysOpened property to true; to open the image overlay panel in the widget
+      orientedImageryViewer.imageOverlaysOpened = true;
+
+      // set dataCaptureEnabled property to true; to enable the data capture tools in the widget
+      orientedImageryViewer.dataCaptureEnabled = true;
+
+      // create an instance of an oriented imagery layer and add it to scene
+      const layer = new OrientedImageryLayer({
+        portalItem: {
+          id: "174fd61f470944848c948659e2e98869",
+        },
+      });
+      map.layers.add(layer);
+
+      // zoom to the full extent of the layer when layer is loaded
+      // set the oriented imagery layer to be used with an oriented imagery viewer
+      view.whenLayerView(layer).then(() => {
+        view.goTo(layer.fullExtent);
+        orientedImageryViewer.layer = layer;
+      });
+
+      // set the popup to be docked in the top-left corner
+      view.popup = new Popup({
+        dockEnabled: true,
+        dockOptions: {
+          position: "top-left",
+          breakpoint: false,
+        },
+      });
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv"></div>
+    <div id="oi-container"></div>
+  </body>
+</html>

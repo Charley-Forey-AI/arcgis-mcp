@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>MediaLayer with images | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+    <style>
+      calcite-slider {
+        width: 70%;
+      }
+
+      calcite-list-item [slot="content-bottom"] {
+        display: none;
+        padding: 0.5rem;
+      }
+
+      calcite-list-item[selected] [slot="content-bottom"] {
+        display: block;
+      }
+
+      #luminosity-div {
+        padding: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <calcite-shell content-behind>
+      <arcgis-map center="-89.93307, 29.973197296501905" zoom="10">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+      </arcgis-map>
+      <calcite-shell-panel slot="panel-end" display-mode="float">
+        <calcite-panel
+          heading="Historic images of New
+          Orleans">
+          <calcite-list id="image-list" selection-mode="multiple" label="Image list"></calcite-list>
+          <div slot="content-bottom">
+            <calcite-label layout="inline"
+              >Toggle luminosity blend mode<calcite-switch id="luminosity-switch"></calcite-switch>
+            </calcite-label>
+          </div>
+        </calcite-panel>
+      </calcite-shell-panel>
+    </calcite-shell>
+    <script type="module">
+      const [Extent, MediaLayer, ExtentAndRotationGeoreference, ImageElement, Map] =
+        await $arcgis.import([
+          "@arcgis/core/geometry/Extent.js",
+          "@arcgis/core/layers/MediaLayer.js",
+          "@arcgis/core/layers/support/ExtentAndRotationGeoreference.js",
+          "@arcgis/core/layers/support/ImageElement.js",
+          "@arcgis/core/Map.js",
+        ]);
+      const state = {
+        imageElements: [],
+        mediaLayer: new MediaLayer({
+          title: "New Orleans",
+        }),
+      };
+      // An array of image information objects.
+      // Each object contains the name, title, and extent of the image.
+      const imageInfos = [
+        {
+          name: "neworleans1891",
+          title: "New Orleans 1891",
+          extent: {
+            xmin: -10047456.27662979,
+            ymin: 3486722.2723874687,
+            xmax: -10006982.870152846,
+            ymax: 3514468.91365495,
+          },
+        },
+        {
+          name: "spanish-fort1891",
+          title: "Spanish Fort 1891",
+          extent: {
+            xmax: -10008215.143195309,
+            xmin: -10061466.93004702,
+            ymax: 3514418.4006159767,
+            ymin: 3486794.2321162825,
+          },
+        },
+        {
+          name: "st-bernard1892",
+          title: "St Bernard 1892",
+          extent: {
+            xmax: -10001415.789436923,
+            xmin: -10046739.695935503,
+            ymax: 3514979.040597104,
+            ymin: 3486942.691935667,
+          },
+        },
+        {
+          name: "chef-menteur1892",
+          title: "Chef Menteur 1892",
+          extent: {
+            xmax: -10003257.6023701,
+            xmin: -10043731.008847024,
+            ymax: 3513936.582106864,
+            ymin: 3486773.1082574953,
+          },
+        },
+      ];
+
+      // Initialize the map
+      const viewElement = document.querySelector("arcgis-map");
+
+      viewElement.map = new Map({
+        basemap: {
+          portalItem: {
+            id: "3582b744bba84668b52a16b0b6942544",
+          },
+        },
+        layers: [state.mediaLayer],
+      });
+      viewElement.constraints = {
+        ...viewElement.constraints,
+        snapToZoom: false,
+        minScale: 1155582,
+      };
+
+      // Get a reference to the image list element.
+      const list = document.querySelector("#image-list");
+
+      // Loop through the imageInfo objects and create list items and image elements for each image.
+      imageInfos.forEach((imageInfo, index) => {
+        createListItem(imageInfo, index);
+        state.imageElements.push(createImageElement(imageInfo.name, imageInfo.extent));
+      });
+
+      // Wait for the list to be ready
+      await list?.componentOnReady();
+
+      // Update the layer with the selected images when the page loads and the view is ready.
+      await viewElement?.viewOnReady();
+      updateLayer();
+
+      // Update the layer source when the selected items in the list change.
+      list?.addEventListener("calciteListChange", () => {
+        updateLayer();
+      });
+      // Change the blend mode of the media layer when the switch is toggled.
+      document.querySelector("#luminosity-switch")?.addEventListener("calciteSwitchChange", () => {
+        state.mediaLayer.blendMode =
+          state.mediaLayer.blendMode === "normal" ? "luminosity" : "normal";
+      });
+      // A function to create an image element.
+      // The function takes the name of the image and its bounding box coordinates as parameters.
+      // It returns a new ImageElement instance with the specified image and georeference.
+      function createImageElement(name, extent) {
+        const imageElement = new ImageElement({
+          image: `https://arcgis.github.io/arcgis-samples-javascript/sample-data/media-layer/new-orleans/${name}.png`,
+          georeference: new ExtentAndRotationGeoreference({
+            extent: new Extent({
+              spatialReference: {
+                wkid: 102100,
+              },
+              xmin: extent.xmin,
+              ymin: extent.ymin,
+              xmax: extent.xmax,
+              ymax: extent.ymax,
+            }),
+          }),
+        });
+        return imageElement;
+      }
+      // A function to create a list item for each image.
+      // The function takes the image information and index as parameters.
+      // It creates a list item with a label and a slider for adjusting the opacity of the image.
+      function createListItem(imageInfo, index) {
+        const listItem = document.createElement("calcite-list-item");
+        listItem.label = imageInfo.title;
+        listItem.dataset.imageName = imageInfo.name;
+        listItem.selected = true;
+
+        const sliderDiv = document.createElement("div");
+        sliderDiv.slot = "content-bottom";
+
+        const sliderLabel = document.createElement("calcite-label");
+        sliderLabel.layout = "inline";
+        sliderLabel.textContent = "Opacity";
+
+        const slider = document.createElement("calcite-slider");
+        slider.value = 100;
+        slider.addEventListener("calciteSliderInput", (event) => {
+          const value = Number(event.target.value ?? 0);
+          state.imageElements[index].opacity = value / 100;
+        });
+
+        sliderLabel.appendChild(slider);
+        sliderDiv.appendChild(sliderLabel);
+        listItem.appendChild(sliderDiv);
+        list?.appendChild(listItem);
+      }
+      // A function to update the layer source with the selected images.
+      // The function retrieves the selected items from the list and updates the source of the media layer
+      // with the corresponding image elements from the imageElements array.
+      async function updateLayer() {
+        // Create a Set of selected image names for faster lookup
+        const selectedImageNames = new Set(
+          list.selectedItems.map((item) => item.dataset.imageName),
+        );
+
+        const source = state.mediaLayer.source;
+        source.elements.removeAll();
+
+        // Filter and add matching image elements to the source
+        state.imageElements.forEach((element) => {
+          const imageName = element.image?.split("/").pop().replace(".png", "");
+          if (selectedImageNames.has(imageName)) {
+            source.elements.push(element);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

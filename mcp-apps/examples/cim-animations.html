@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Animated symbols | Sample | ArcGIS Maps SDK for JavaScript</title>
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #infoDiv {
+        width: 300px;
+        padding: 10px;
+        color: var(--calcite-color-text-2);
+        font-size: var(--calcite-font-size);
+        line-height: 1.3em;
+      }
+    </style>
+  </head>
+
+  <body class="calcite-mode-dark">
+    <!-- load USGS earthquake webmap from ID -->
+    <arcgis-map item-id="ae02f22cfd3149779f9fff795d40ad33">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-expand slot="top-right" expanded expand-icon="legend">
+        <div id="infoDiv">
+          <h3>Earthquakes in the past month</h3>
+          <p>
+            Highlighting earthquakes <b>greater than 2.5 magnitude</b> that occurred in the
+            <b>last 12 hours</b>
+          </p>
+          <arcgis-legend></arcgis-legend>
+        </div>
+      </arcgis-expand>
+    </arcgis-map>
+    <script type="module">
+      // check for reduced motion
+      const isReduced =
+        window.matchMedia(`(prefers-reduced-motion: reduce)`) === true ||
+        window.matchMedia(`(prefers-reduced-motion: reduce)`).matches === true;
+
+      const viewElement = document.querySelector("arcgis-map");
+      // wait for the view to be ready
+      await viewElement.viewOnReady();
+      // disable animations if reduced motion is enabled
+      viewElement.animationsDisabled = isReduced;
+      // get the map component
+      const map = viewElement.map;
+      // find earthquakes layer
+      const earthquakesLayer = map.layers.find((layer) => layer.title === "USGS Earthquakes");
+      earthquakesLayer.copyright = "U.S. Geological Survey";
+      // apply new renderer with animated CIM symbol
+      earthquakesLayer.renderer = {
+        type: "simple",
+        symbol: {
+          type: "cim", // autocasts as new CIMSymbol
+          data: {
+            type: "CIMSymbolReference",
+            primitiveOverrides: [
+              {
+                // animation will only play for earthquakes with a magnitude greater than 2.5
+                // that occurred in the past 12 hours if reduced motion is not enabled
+                type: "CIMPrimitiveOverride",
+                primitiveName: "animationOverride",
+                propertyName: "PlayAnimation",
+                valueExpressionInfo: {
+                  type: "CIMExpressionInfo",
+                  title: "Animation override",
+                  expression: `$feature.mag >= 2.5 && DateDiff(Timestamp(), ChangeTimeZone(Date($feature.time), 'UTC'), 'hours') < 12;`,
+                  returnType: "Default",
+                },
+              },
+              {
+                // override stroke symbol layer color for earthquakes with a magnitude greater than 2.5
+                // that occurred in the past 12 hours
+                type: "CIMPrimitiveOverride",
+                primitiveName: "strokeOverride",
+                propertyName: "Color",
+                valueExpressionInfo: {
+                  type: "CIMExpressionInfo",
+                  title: "Animation override",
+                  expression: `
+                    if($feature.mag >= 2.5 && DateDiff(Timestamp(), ChangeTimeZone(Date($feature.time), 'UTC'), 'hours') < 12) {
+                       return 'rgba(255,255,255,255)';
+                    }`,
+                  returnType: "Default",
+                },
+              },
+            ],
+            symbol: {
+              type: "CIMPointSymbol",
+              symbolLayers: [
+                {
+                  type: "CIMVectorMarker",
+                  enable: true,
+                  animations: [
+                    {
+                      type: "CIMSymbolAnimationScale",
+                      primitiveName: "scaleOverride",
+                      scaleFactor: 3,
+                      animatedSymbolProperties: {
+                        type: "CIMAnimatedSymbolProperties",
+                        primitiveName: "animationOverride",
+                        playAnimation: true,
+                        randomizeStartTime: false,
+                        repeatType: "Loop",
+                        repeatDelay: 1.5,
+                        duration: 1.5,
+                      },
+                    },
+                    {
+                      type: "CIMSymbolAnimationTransparency",
+                      toTransparency: 100,
+                      animatedSymbolProperties: {
+                        type: "CIMAnimatedSymbolProperties",
+                        primitiveName: "animationOverride",
+                        playAnimation: true,
+                        randomizeStartTime: false,
+                        repeatType: "Loop",
+                        repeatDelay: 1.5,
+                        duration: 1.5,
+                        easing: "EaseIn",
+                      },
+                    },
+                  ],
+                  size: 5,
+                  frame: {
+                    xmin: 0,
+                    ymin: 0,
+                    xmax: 17,
+                    ymax: 17,
+                  },
+                  markerGraphics: [
+                    {
+                      type: "CIMMarkerGraphic",
+                      geometry: generateCircleGeometry(),
+                      symbol: {
+                        type: "CIMPolygonSymbol",
+                        symbolLayers: [
+                          {
+                            type: "CIMSolidStroke",
+                            primitiveName: "strokeOverride",
+                            enable: true,
+                            width: 1,
+                            color: [255, 255, 255, 0],
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: "CIMVectorMarker",
+                  enable: true,
+                  size: 5,
+                  frame: {
+                    xmin: 0,
+                    ymin: 0,
+                    xmax: 17,
+                    ymax: 17,
+                  },
+                  markerGraphics: [
+                    {
+                      type: "CIMMarkerGraphic",
+                      geometry: generateCircleGeometry(),
+                      symbol: {
+                        type: "CIMPolygonSymbol",
+                        symbolLayers: [
+                          {
+                            type: "CIMSolidFill",
+                            enable: true,
+                            color: [255, 187, 0, 255],
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                  scaleSymbolsProportionally: true,
+                  respectFrame: true,
+                },
+              ],
+            },
+          },
+        },
+        visualVariables: [
+          {
+            type: "color",
+            field: "mag",
+            legendOptions: {
+              title: "Magnitude",
+            },
+            stops: [
+              {
+                value: 2,
+                color: "#7f7f7fff",
+              },
+              {
+                value: 4.5,
+                color: "#9c253dff",
+              },
+              {
+                value: 7,
+                color: "#ff1947ff",
+              },
+            ],
+          },
+        ],
+      };
+      earthquakesLayer.orderBy = [
+        {
+          // animated features will display on top
+          valueExpression: `var v = number($feature.mag >= 2.5 && DateDiff(Timestamp(), ChangeTimeZone(Date($feature.time), 'UTC'), 'hours') < 12); return v * $feature.mag;`,
+          order: "descending",
+        },
+        {
+          order: "descending",
+          field: "mag",
+        },
+        {
+          order: "descending",
+          field: "time",
+        },
+      ];
+
+      function generateCircleGeometry() {
+        return {
+          rings: [
+            [
+              [8.5, 0],
+              [7.02, 0.13],
+              [5.59, 0.51],
+              [4.25, 1.14],
+              [3.04, 1.99],
+              [1.99, 3.04],
+              [1.14, 4.25],
+              [0.51, 5.59],
+              [0.13, 7.02],
+              [0, 8.5],
+              [0.13, 9.98],
+              [0.51, 11.41],
+              [1.14, 12.75],
+              [1.99, 13.96],
+              [3.04, 15.01],
+              [4.25, 15.86],
+              [5.59, 16.49],
+              [7.02, 16.87],
+              [8.5, 17],
+              [9.98, 16.87],
+              [11.41, 16.49],
+              [12.75, 15.86],
+              [13.96, 15.01],
+              [15.01, 13.96],
+              [15.86, 12.75],
+              [16.49, 11.41],
+              [16.87, 9.98],
+              [17, 8.5],
+              [16.87, 7.02],
+              [16.49, 5.59],
+              [15.86, 4.25],
+              [15.01, 3.04],
+              [13.96, 1.99],
+              [12.75, 1.14],
+              [11.41, 0.51],
+              [9.98, 0.13],
+              [8.5, 0],
+            ],
+          ],
+        };
+      }
+    </script>
+  </body>
+</html>

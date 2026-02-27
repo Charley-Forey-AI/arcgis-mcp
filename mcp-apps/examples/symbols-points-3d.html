@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Flat vs. volumetric 3D symbol layers | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #panel {
+        --calcite-color-text-1: #ffffff;
+        --calcite-panel-background-color: #000000;
+      }
+
+      #panel-content {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-scene
+      basemap="dark-gray-vector"
+      ground="world-elevation"
+      camera-position="-81.76, 16.77, 1932626"
+      camera-tilt="40">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <calcite-panel slot="top-right" id="panel">
+        <div id="panel-content">
+          <calcite-label>Show points as:</calcite-label>
+          <calcite-radio-button-group name="symbolType" layout="vertical">
+            <calcite-label layout="inline">
+              <calcite-radio-button value="icon" checked></calcite-radio-button>
+              2D Icon (Flat)
+            </calcite-label>
+            <calcite-label layout="inline">
+              <calcite-radio-button value="object"></calcite-radio-button>
+              3D Object (Volumetric)
+            </calcite-label>
+          </calcite-radio-button-group>
+        </div>
+      </calcite-panel>
+    </arcgis-scene>
+    <script type="module">
+      const [FeatureLayer, LabelClass] = await $arcgis.import([
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/layers/support/LabelClass.js",
+      ]);
+
+      /*****************************************************************
+       * Get a reference to the HTML elements
+       *****************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+
+      // Create iconSymbol and add to renderer
+      const iconSymbol = {
+        type: "point-3d", // autocasts as new PointSymbol3D()
+        symbolLayers: [
+          {
+            type: "icon", // autocasts as new IconSymbol3DLayer()
+            size: 12,
+            resource: {
+              primitive: "square",
+            },
+            material: {
+              color: "orange",
+            },
+            outline: {
+              color: "white",
+              size: 1,
+            },
+          },
+        ],
+      };
+
+      const iconSymbolRenderer = {
+        type: "simple", // autocasts as new SimpleRenderer()
+        symbol: iconSymbol,
+      };
+
+      // Create objectSymbol and add to renderer
+      const objectSymbol = {
+        type: "point-3d", // autocasts as new PointSymbol3D()
+        symbolLayers: [
+          {
+            type: "object", // autocasts as new ObjectSymbol3DLayer()
+            width: 70000,
+            height: 100000,
+            resource: {
+              primitive: "cone",
+            },
+            material: {
+              color: "#FFD700",
+            },
+          },
+        ],
+      };
+
+      const objectSymbolRenderer = {
+        type: "simple", // autocasts as new SimpleRenderer()
+        symbol: objectSymbol,
+      };
+
+      const labelClass = new LabelClass({
+        symbol: {
+          type: "label-3d", // autocasts as new LabelSymbol3D()
+          symbolLayers: [
+            {
+              type: "text", // autocasts as new TextSymbol3DLayer()
+              material: {
+                color: "white",
+              },
+              size: 10,
+            },
+          ],
+        },
+        labelPlacement: "above-center",
+        labelExpressionInfo: {
+          expression: 'DefaultValue($feature.CITY_NAME, "no data")',
+        },
+      });
+
+      // Request feature layers and overwrite renderer
+      const featureLayer = new FeatureLayer({
+        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/CITIES_EastUSA/FeatureServer/0",
+        renderer: iconSymbolRenderer,
+        outFields: ["CITY_NAME"],
+        // Ensure that all features are shown at all scales
+        maxScale: 0,
+        minScale: 0,
+        labelingInfo: [labelClass],
+      });
+      viewElement.map.add(featureLayer);
+
+      // Register the events listener to toggle between objectSymbol and iconSymbol
+      const radioButtonGroup = document.querySelector("calcite-radio-button-group");
+      // Add an event listener for the change event
+      radioButtonGroup.addEventListener("calciteRadioButtonChange", (event) => {
+        if (event.target.value === "icon") {
+          featureLayer.renderer = iconSymbolRenderer;
+        } else {
+          featureLayer.renderer = objectSymbolRenderer;
+        }
+      });
+    </script>
+  </body>
+</html>

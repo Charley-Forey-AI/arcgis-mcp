@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>VoxelLayer and time | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      arcgis-legend {
+        width: 210px;
+      }
+
+      arcgis-time-slider {
+        width: 100vw;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-scene item-id="220c04143e704fbe8b17cb3d30639f3b">
+      <arcgis-zoom slot="top-left"> </arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <arcgis-expand slot="top-right">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+      <arcgis-time-slider
+        slot="bottom-start"
+        layout="auto"
+        mode="instant"
+        play-rate="3000"></arcgis-time-slider>
+    </arcgis-scene>
+    <script type="module">
+      // Get references to DOM elements
+      const viewElement = document.querySelector("arcgis-scene");
+      const timeSlider = document.querySelector("arcgis-time-slider");
+      await viewElement.viewOnReady();
+
+      const voxelLayer = viewElement.map.layers.find((layer) => layer.type === "voxel");
+
+      // Wait for the voxel layer to be in the component's view
+      await viewElement.whenLayerView(voxelLayer);
+
+      voxelLayer.popupEnabled = true;
+
+      const voxelVolume = voxelLayer.getVolume(null);
+      const volumeType = voxelVolume.volumeType;
+      // Check that the volume type is xyzt
+      if (volumeType === "xyzt") {
+        timeSlider.fullTimeExtent = voxelLayer.timeInfo.fullTimeExtent;
+        // Configure the timeSlider to use the layer's timeInfo.stops
+        timeSlider.stops = {
+          dates: voxelLayer.timeInfo.stops,
+        };
+        // Show only the ticks at the values of the voxelLayer's timeInfo.stops
+        timeSlider.tickConfigs = [
+          {
+            mode: "position",
+            values: voxelLayer.timeInfo.stops.map((date) => date.getTime()),
+            labelsVisible: true,
+            labelFormatFunction: (value) => {
+              // the data does not have a regular interval of dates
+              // format the tick labels to make it consistent and only show year
+              const date = new Date(value);
+              if (date.getUTCFullYear() % 2 === 0) {
+                return `${date.getFullYear()}`;
+              } else {
+                return "";
+              }
+            },
+          },
+        ];
+      }
+    </script>
+  </body>
+</html>

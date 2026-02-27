@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Synchronize Map and Scene component views | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      arcgis-scene {
+        float: left;
+        width: 50%;
+        height: 100%;
+      }
+
+      arcgis-map {
+        float: right;
+        width: 50%;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene basemap="satellite" ground="world-elevation" zoom="3">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+    </arcgis-scene>
+    <arcgis-map basemap="satellite" zoom="3">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+    </arcgis-map>
+
+    <script type="module">
+      const [reactiveUtils] = await $arcgis.import(["@arcgis/core/core/reactiveUtils.js"]);
+      const sceneElement = document.querySelector("arcgis-scene");
+      const mapElement = document.querySelector("arcgis-map");
+      // Wait for the views to initialize.
+      await sceneElement.viewOnReady();
+      await mapElement.viewOnReady();
+
+      // Disable zoom snapping to get the best synchronization
+      mapElement.constraints = {
+        snapToZoom: false,
+      };
+
+      const views = [sceneElement.view, mapElement.view];
+      let active;
+
+      const sync = (source) => {
+        if (!active || !active.viewpoint || active !== source) {
+          return;
+        }
+        for (const view of views) {
+          if (view !== active) {
+            // Clone current viewpoint
+            const activeViewpoint = active.viewpoint.clone();
+            // Adjust scale by cosine of latitude to account for distance distortion as latitude moves away from the equator
+            const latitude = active.center.latitude;
+            const scaleConversionFactor = Math.cos((latitude * Math.PI) / 180.0);
+            if (active.type === "3d") {
+              activeViewpoint.scale /= scaleConversionFactor;
+            } else {
+              activeViewpoint.scale *= scaleConversionFactor;
+            }
+            // Sync viewpoint to other view
+            view.viewpoint = activeViewpoint;
+          }
+        }
+      };
+
+      // Watch for interaction and viewpoint changes on each view and sync accordingly
+      for (const view of views) {
+        const handle = reactiveUtils.watch(
+          () => [view.interacting, view.viewpoint],
+          ([interacting, viewpoint]) => {
+            if (interacting) {
+              active = view;
+              sync(active);
+            }
+            if (viewpoint) {
+              sync(view);
+            }
+          },
+        );
+      }
+    </script>
+  </body>
+</html>

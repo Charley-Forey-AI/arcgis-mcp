@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>WMSLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+    </arcgis-scene>
+    <script type="module">
+      const [WMSLayer] = await $arcgis.import(["@arcgis/core/layers/WMSLayer.js"]);
+      /*****************************************************************
+       * Get a reference to the Scene component
+       *****************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+
+      /***********************************
+       * Data attribution:
+       *  OpenStreetMap WMS by terrestris GmbH and Co. KG. Following sources were used:
+       *  (c) OpenStreetMap contributors (http://www.openstreetmap.org/copyright)
+       *  (c) OpenStreetMap Data (http://openstreetmapdata.com)
+       *  (c) Natural Earth Data (http://www.naturalearthdata.com)
+       *  (c) ASTER GDEM 30m (https://asterweb.jpl.nasa.gov/gdem.asp)
+       *  (c) SRTM 450m by ViewfinderPanoramas (http://viewfinderpanoramas.org/)
+       *  (c) Great Lakes Bathymetry by NGDC (http://www.ngdc.noaa.gov/mgg/greatlakes/)
+       *  (c) SRTM 30m by NASA EOSDIS Land Processes Distributed Active Archive Center (LP DAAC, https://lpdaac.usgs.gov/)
+       *********************************/
+      const layer = new WMSLayer({
+        url: "https://ows.terrestris.de/osm/service",
+      });
+
+      await layer.load();
+      const sublayer = layer.findSublayerByName("OSM-WMS");
+      if (sublayer) {
+        layer.sublayers = [sublayer];
+      }
+
+      viewElement.spatialReference = {
+        wkid: 102100,
+      };
+
+      // set the WMSLayer instance to the Scene component as a basemap
+      viewElement.map = {
+        basemap: {
+          baseLayers: [layer],
+          title: "WMS Layer",
+        },
+      };
+    </script>
+  </body>
+</html>

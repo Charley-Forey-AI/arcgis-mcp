@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Shadow cast | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css" />
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+    <style>
+      html,
+      body,
+      #viewDiv {
+        height: 100%;
+        margin: 0;
+      }
+
+      #selection {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        right: 20px;
+        display: flex;
+        justify-content: center;
+      }
+
+      #scenarioA,
+      #scenarioB {
+        width: 40%;
+        max-width: 300px;
+        margin: 3px;
+      }
+    </style>
+
+    <script type="module">
+      const [WebScene, SceneView, ShadowCast] = await $arcgis.import([
+        "@arcgis/core/WebScene.js",
+        "@arcgis/core/views/SceneView.js",
+        "@arcgis/core/widgets/ShadowCast.js",
+      ]);
+
+      const view = new SceneView({
+        container: "viewDiv",
+        map: new WebScene({
+          portalItem: {
+            id: "f2220db76c6448b4be8083d19ef4cf8d",
+          },
+        }),
+        environment: {
+          lighting: {
+            directShadowsEnabled: false,
+          },
+        },
+      });
+      const widget = new ShadowCast({
+        view,
+      });
+      view.ui.add(widget, "top-right");
+      // Create the analysis for a certain date.
+      widget.viewModel.date = new Date("March 1, 2026");
+      // Customize the threshold analysis that is shown when the app is loaded.
+      widget.viewModel.thresholdOptions = {
+        // Areas in the shadow for more than 3 hours are colored transparent red.
+        color: [255, 0, 0, 0.4],
+        value: 3 * 3600 * 1000,
+        // Discreet shadow context is shown in dark gray.
+        contextEnabled: true,
+        contextOptions: {
+          color: [30, 30, 30, 0.7],
+        },
+      };
+      let scenarioA = null;
+      let scenarioB = null;
+      view.when(() => {
+        view.map.allLayers.forEach((layer) => {
+          if (layer.title === "Development Scenario A") {
+            scenarioA = layer;
+          }
+          if (layer.title === "Development Scenario B") {
+            scenarioB = layer;
+          }
+        });
+      });
+      const buttonA = document.getElementById("scenarioA");
+      const buttonB = document.getElementById("scenarioB");
+      buttonA.addEventListener("click", (event) => {
+        toggleScenarios("A");
+      });
+      buttonB.addEventListener("click", (event) => {
+        toggleScenarios("B");
+      });
+
+      function toggleScenarios(active) {
+        scenarioA.visible = active === "B" ? false : true;
+        scenarioB.visible = active === "B" ? true : false;
+        if (active === "B") {
+          buttonA.appearance = "outline-fill";
+          buttonB.appearance = "solid";
+        }
+        if (active === "A") {
+          buttonA.appearance = "solid";
+          buttonB.appearance = "outline-fill";
+        }
+      }
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv">
+      <div id="selection">
+        <calcite-button id="scenarioA" appearance="solid">Scenario A</calcite-button>
+        <calcite-button id="scenarioB" appearance="outline-fill">Scenario B</calcite-button>
+      </div>
+    </div>
+  </body>
+</html>

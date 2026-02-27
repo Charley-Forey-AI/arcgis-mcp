@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Custom Basemap | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene
+      basemap="satellite"
+      ground="world-elevation"
+      camera-position=" -111.848111, 40.713906, 1990"
+      camera-tilt="82.9"
+      camera-heading="124.7">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <arcgis-basemap-toggle show-title slot="top-right"></arcgis-basemap-toggle>
+    </arcgis-scene>
+
+    <script type="module">
+      const [VectorTileLayer, Basemap] = await $arcgis.import([
+        "@arcgis/core/layers/VectorTileLayer.js",
+        "@arcgis/core/Basemap.js",
+      ]);
+
+      // Create a VectorTileLayer from a style URL
+      const mapBaseLayer = new VectorTileLayer({
+        url: "https://arcgis.com/sharing/rest/content/items/b5676525747f499687f12746441101ef/resources/styles/root.json",
+      });
+
+      // Create a Basemap with the VectorTileLayer. The thumbnailUrl will be used for
+      // the image in the Basemap Toggle component
+      const customBasemap = new Basemap({
+        baseLayers: [mapBaseLayer],
+        title: "Terrain",
+        id: "terrain",
+        thumbnailUrl:
+          "https://arcgis.com/sharing/rest/content/items/b5676525747f499687f12746441101ef/info/thumbnail/ago_downloaded.png",
+      });
+
+      // Get the Scene component and set the map and initial camera
+      const viewElement = document.querySelector("arcgis-scene");
+
+      // Get the Basemap Toggle component
+      // and set the nextBasemap property to the custom basemap
+      const toggleElement = document.querySelector("arcgis-basemap-toggle");
+      toggleElement.nextBasemap = customBasemap;
+    </script>
+  </body>
+</html>

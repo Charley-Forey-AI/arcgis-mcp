@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>FlowRenderer in a 3D scene | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      .container {
+        display: flex;
+        width: 100%;
+        height: 100%;
+      }
+      arcgis-scene {
+        flex: 1;
+        height: 100%;
+      }
+      .panel-side {
+        max-width: 465px;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        right: 0;
+        z-index: 60;
+        display: none;
+        position: relative;
+      }
+      .month-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        grid-template-rows: repeat(3, auto);
+        gap: 0.5rem;
+        max-width: 500px;
+      }
+      .loader {
+        display: none;
+        padding-top: 0;
+        padding-bottom: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="calcite-mode-dark container">
+      <arcgis-scene item-id="e3d224978b384d7288bafee99e34c75a">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+        <arcgis-compass slot="top-left"></arcgis-compass>
+        <arcgis-expand slot="bottom-left">
+          <arcgis-legend></arcgis-legend>
+        </arcgis-expand>
+        <calcite-button
+          slot="top-right"
+          id="filter-panel-button"
+          icon-start="image-collection-explorer"
+          kind="neutral"></calcite-button>
+        <calcite-tooltip
+          reference-element="filter-panel-button"
+          placement="left-start"
+          close-on-click>
+          <span>Multidimensional filter panel</span>
+        </calcite-tooltip>
+        <calcite-loader
+          id="loader"
+          text="Updating flow..."
+          type="indeterminate"
+          class="loader"
+          slot="bottom-right"
+          scale="s">
+        </calcite-loader>
+      </arcgis-scene>
+      <calcite-panel
+        id="filter-panel"
+        heading="Multidimensional Filter"
+        class="panel-side"
+        scale="s"
+        description="Filter the multidimensional layer to visualize a single slice defined as a combination of pressure and time.">
+        <calcite-block
+          collapsible
+          heading="Vertical Z dimension (StdPressure)"
+          expanded
+          icon-start="altitude">
+          <calcite-tile-group
+            alignment="start"
+            layout="vertical"
+            selection-appearance="border"
+            selection-mode="single-persist">
+            <calcite-tile
+              selected
+              icon="plane"
+              heading="Wind at ~8km (Aviation)"
+              description="Winds data used for JetStream or aviation use cases.
+                     They are collected at a pressure of 17,500 Pa (~8km above the sea level)">
+            </calcite-tile>
+            <calcite-tile
+              icon="find-add-path"
+              heading="Wind at ~1.5km (Bird migration)"
+              description="Winds data used to study the bird migration. They are collected and visualized at a pressure of 85,000 Pa (~1.5 kilometers above the sea level)">
+            </calcite-tile>
+            <calcite-tile
+              icon="relative-to-ground-elevation"
+              heading="Wind at ~10m (Surface winds)"
+              description="Winds data used for surface winds analysis. They are collected at a pressure of 100,000 Pa (~10m above the terrain)">
+            </calcite-tile>
+          </calcite-tile-group>
+        </calcite-block>
+        <calcite-block collapsible expanded heading="Time dimension (StdTime)" icon-start="clock">
+          <div id="month-grid" class="month-grid"></div>
+          <calcite-notice scale="s" open icon="open-book">
+            <span slot="message">
+              The wind data shown are monthly averages from 2005 to 2024, providing insight into
+              long-term patterns at each pressure level.
+            </span>
+          </calcite-notice>
+        </calcite-block>
+      </calcite-panel>
+    </div>
+    <script type="module">
+      (async () => {
+        // Import necessary modules from the ArcGIS API for JavaScript
+        const [ImageryTileLayer, DimensionalDefinition, ColorVariable, reactiveUtils] =
+          await $arcgis.import([
+            "@arcgis/core/layers/ImageryTileLayer.js",
+            "@arcgis/core/layers/support/DimensionalDefinition.js",
+            "@arcgis/core/renderers/visualVariables/ColorVariable",
+            "@arcgis/core/core/reactiveUtils.js",
+          ]);
+
+        /*****************************************************************
+         * Component and view setup
+         *****************************************************************/
+
+        const viewElement = document.querySelector("arcgis-scene");
+        await viewElement.viewOnReady();
+
+        setupLabels();
+        viewElement.constraints = {
+          altitude: {
+            min: 1000000,
+          },
+        };
+
+        /*****************************************************************
+         * DOM and variables
+         *****************************************************************/
+
+        // Get references to the main UI components from the DOM
+        const scenarioTileGroup = document.querySelector("calcite-tile-group");
+        const scenarioTiles = document.querySelectorAll("calcite-tile");
+        const filterPanel = document.getElementById("filter-panel");
+        const filterPanelButton = document.getElementById("filter-panel-button");
+        const loader = document.getElementById("loader");
+
+        let isPanelOpen = false;
+        let newOffset;
+        let currentPressureValue = 17500; // Pressure value in Pa for "Aviation" scenario
+        let currentTimeSlice = 1; // January
+
+        /*****************************************************************
+         * Layer Initialization
+         *****************************************************************/
+
+        // Create the imagery layer for displaying global wind data
+        // The initial definition uses the default pressure and time values
+        const windTileLayer = new ImageryTileLayer({
+          url: "https://tiledimageservices.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/Global_Average_Wind_Speeds_Month_Altitude/ImageServer",
+          elevationInfo: {
+            mode: "absolute-height",
+            offset: 8000,
+          },
+          renderer: {
+            type: "flow",
+            trailLength: 20,
+            flowSpeed: 3,
+            trailWidth: 2.5,
+            visualVariables: [
+              new ColorVariable({
+                field: "Magnitude",
+                stops: [
+                  { value: 0, color: [0, 100, 255, 1], label: "0 m/s" },
+                  { value: 0.1, color: [0, 150, 255, 1] },
+                  { value: 3, color: [0, 200, 255, 1] },
+                  { value: 7, color: [0, 220, 130, 1] },
+                  { value: 15, color: [80, 255, 70, 1] },
+                  { value: 25, color: [200, 255, 40, 1] },
+                  { value: 40, color: [255, 255, 0, 1], label: ">40 m/s" },
+                ],
+              }),
+            ],
+          },
+          multidimensionalDefinition: [
+            new DimensionalDefinition({
+              variableName: "Vector-MagDir",
+              dimensionName: "StdPressure",
+              values: [currentPressureValue],
+              isSlice: true,
+            }),
+            new DimensionalDefinition({
+              variableName: "Vector-MagDir",
+              dimensionName: "StdTime",
+              values: [currentTimeSlice],
+              isSlice: true,
+            }),
+          ],
+        });
+
+        // Add the wind layer to the scene
+        viewElement.map.add(windTileLayer);
+
+        // Get the layer view for the windTileLayer
+        const windLayerView = await viewElement.view.whenLayerView(windTileLayer);
+
+        reactiveUtils.watch(
+          () => windLayerView.updating,
+          (isUpdating) => {
+            // Hide loader when updating completes
+            loader.style.display = isUpdating ? "flex" : "none";
+          },
+        );
+
+        /*****************************************************************
+         * Event Listeners and Initial Setup
+         *****************************************************************/
+
+        scenarioTiles.forEach((tile) => {
+          tile.addEventListener("click", () => {
+            zDimensionFilter();
+          });
+        });
+
+        timeDimensionFilter();
+
+        filterPanelButton.addEventListener("click", () => {
+          isPanelOpen = !isPanelOpen;
+          filterPanel.style.display = isPanelOpen ? "flex" : "none";
+        });
+
+        /**
+         * Function to update the layer's multidimensional definition
+         */
+        function updateLayerDefinition() {
+          windTileLayer.multidimensionalDefinition = [
+            new DimensionalDefinition({
+              variableName: "Vector-MagDir",
+              dimensionName: "StdPressure",
+              values: [currentPressureValue],
+              isSlice: true,
+            }),
+            new DimensionalDefinition({
+              variableName: "Vector-MagDir",
+              dimensionName: "StdTime",
+              values: [currentTimeSlice],
+              isSlice: true,
+            }),
+          ];
+        }
+
+        /*****************************************************************
+         * Scenario and Elevation modes functions
+         *****************************************************************/
+
+        /**
+         * Function to handle Z(Pressure) dimension changes
+         */
+        function zDimensionFilter() {
+          const selectedScenarioTile = scenarioTileGroup.querySelector("calcite-tile[selected]");
+          const scenarioTitle = selectedScenarioTile?.heading;
+
+          switch (scenarioTitle) {
+            case "Wind at ~1.5km (Bird migration)":
+              currentPressureValue = 85000;
+              newOffset = 1500;
+              break;
+            case "Wind at ~10m (Surface winds)":
+              currentPressureValue = 100000;
+              newOffset = 10;
+              break;
+            default: // "Wind at ~8km (Aviation)"
+              currentPressureValue = 17500;
+              newOffset = 8000;
+              break;
+          }
+          updateLayerDefinition();
+
+          // Adjust the layer elevation offset to the new pressure level
+          windTileLayer.elevationInfo = {
+            mode: "absolute-height",
+            offset: newOffset, //meters
+          };
+        }
+
+        /*****************************************************************
+         * Time dimension
+         *****************************************************************/
+
+        /**
+         * Function to handle time dimension changes
+         */
+        function timeDimensionFilter() {
+          const monthData = [
+            { name: "Jan", value: 1 },
+            { name: "Apr", value: 4 },
+            { name: "Jul", value: 7 },
+            { name: "Oct", value: 10 },
+          ];
+
+          const grid = document.getElementById("month-grid");
+          grid.textContent = "";
+
+          monthData.forEach(({ name, value }, i) => {
+            const btn = document.createElement("calcite-button");
+            btn.setAttribute("round", "true");
+            btn.setAttribute("appearance", i === 0 ? "solid" : "outline-fill"); // First month selected
+            btn.setAttribute("label", value.toString()); // Actual month number
+            btn.textContent = name;
+            grid.appendChild(btn);
+          });
+
+          grid.addEventListener("click", (event) => {
+            const target = event.target.closest("calcite-button");
+            if (!target) return;
+
+            grid.querySelectorAll("calcite-button").forEach((btn) => {
+              btn.setAttribute("appearance", "outline-fill");
+            });
+
+            target.setAttribute("appearance", "solid");
+            const monthNumber = parseInt(target.getAttribute("label")); // Actual month number
+            currentTimeSlice = monthNumber;
+            updateLayerDefinition();
+          });
+        }
+
+        /*****************************************************************
+         * Labels setup
+         *****************************************************************/
+
+        /**
+         * Function to add an offset to labels
+         */
+        function setupLabels() {
+          const labelsLayer = viewElement.map.allLayers.items.find(
+            (layer) => layer.title === "Places and Labels",
+          );
+
+          labelsLayer.labelingInfo.forEach((labelClass) => {
+            labelClass.labelPlacement = "above-center";
+            labelClass.symbol.verticalOffset = { screenLength: 8 };
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>

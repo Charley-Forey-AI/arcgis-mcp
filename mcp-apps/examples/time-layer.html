@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Time-based layer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        height: 100%;
+        margin: 0;
+      }
+      #clock {
+        width: 220px;
+        height: 220px;
+      }
+      .esri-ui-corner .esri-component {
+        box-shadow: inherit;
+      }
+    </style>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css" />
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <script type="module">
+      import Clock from "https://developers.arcgis.com/javascript/latest/assets/sample-code/time-layer/clock.js";
+
+      const [intl, Map, MapImageLayer, MapView, config] = await $arcgis.import([
+        "@arcgis/core/intl.js",
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/MapImageLayer.js",
+        "@arcgis/core/views/MapView.js",
+        "@arcgis/core/config.js",
+      ]);
+
+      // An authorization string used to access the traffic service
+      config.apiKey = "YOUR_ACCESS_TOKEN";
+
+      const trafficLayer = new MapImageLayer({
+        url: "https://traffic.arcgis.com/arcgis/rest/services/World/Traffic/MapServer",
+        dpi: 48,
+        imageFormat: "png32",
+        refreshInterval: 3, // refresh the layer every 3 minutes
+        useViewTime: false,
+      });
+
+      const map = new Map({
+        basemap: "streets-navigation-vector",
+        layers: [trafficLayer],
+      });
+
+      const view = new MapView({
+        map: map,
+        container: "viewDiv",
+        center: [-118.2, 34.047],
+        zoom: 10,
+      });
+
+      const clock = new Clock({
+        el: "clock", // container div
+        skin: "https://developers.arcgis.com/javascript/latest/assets/sample-code/time-layer/clock.svg",
+        time: Date.now(), // number of milliseconds elapsed since January 1, 1970, 00:00:00 UTC.
+      });
+
+      view.ui.add("clock", "bottom-right");
+
+      function setDate(time) {
+        // show the latest traffic data if the user
+        // clicks on `live` button on the clock
+        if (clock.mode === "live") {
+          trafficLayer.timeExtent = null;
+        } else {
+          // otherwise shows the traffic data where
+          // the clock handles move to
+          trafficLayer.timeExtent = {
+            start: time,
+            end: time,
+          };
+        }
+      }
+
+      clock.on("time-change", setDate);
+      setDate(Date.now());
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv" class="esri-widget">
+      <div id="clock"></div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Custom ElevationLayer - Exaggerating elevation | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css" />
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background: radial-gradient(#12bff2, #0269a1);
+      }
+
+      arcgis-scene {
+        filter: saturate(1.2) drop-shadow(0 0 20px white);
+      }
+
+      calcite-label {
+        padding-top: 12px;
+      }
+    </style>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <script type="module">
+      // Import necessary modules from the ArcGIS Maps SDK for JavaScript
+      const [Map, ElevationLayer, BaseElevationLayer, Basemap, TileLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/ElevationLayer.js",
+        "@arcgis/core/layers/BaseElevationLayer.js",
+        "@arcgis/core/Basemap.js",
+        "@arcgis/core/layers/TileLayer.js",
+      ]);
+
+      /*****************************************************************
+       * Custom exaggerated elevation layer
+       *****************************************************************/
+      const ExaggeratedElevationLayer = BaseElevationLayer.createSubclass({
+        properties: {
+          // Exaggerates the actual elevations by 70x
+          exaggeration: 70,
+        },
+        load() {
+          this._elevation = new ElevationLayer({
+            url: "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/TopoBathy3D/ImageServer",
+          });
+          // Wait for the elevation layer to load before resolving load()
+          this.addResolvingPromise(
+            this._elevation.load().then(() => {
+              this.tileInfo = this._elevation.tileInfo;
+              this.spatialReference = this._elevation.spatialReference;
+              this.fullExtent = this._elevation.fullExtent;
+            }),
+          );
+
+          return this;
+        },
+        // Fetches the tile(s) visible in the scene
+        fetchTile(level, row, col, options) {
+          return this._elevation.fetchTile(level, row, col, options).then((data) => {
+            const exaggeration = this.exaggeration;
+            for (let i = 0; i < data.values.length; i++) {
+              data.values[i] = data.values[i] * exaggeration;
+            }
+            return data;
+          });
+        },
+      });
+
+      /*****************************************************************
+       * Map and Scene setup
+       *****************************************************************/
+      const basemap = new Basemap({
+        baseLayers: [
+          new TileLayer({
+            url: "https://tiles.arcgis.com/tiles/nGt4QxSblgDfeJn9/arcgis/rest/services/terrain_with_heavy_bathymetry/MapServer",
+            copyright:
+              'Bathymetry, topography and satellite imagery from <a href="https://visibleearth.nasa.gov/view_cat.php?categoryID=1484" target="_blank">NASA Visible Earth</a> | <a href="http://www.aag.org/global_ecosystems" target="_blank">World Ecological Land Units, AAG</a> | Oceans, glaciers and water bodies from <a href="https://www.naturalearthdata.com/" target="_blank">Natural Earth</a>',
+          }),
+        ],
+      });
+
+      const elevationLayer = new ExaggeratedElevationLayer();
+
+      const map = new Map({
+        basemap,
+        ground: {
+          layers: [elevationLayer],
+        },
+      });
+
+      const viewElement = document.querySelector("arcgis-scene");
+      viewElement.map = map;
+
+      viewElement.environment = {
+        background: {
+          type: "color",
+          color: [255, 252, 244, 0],
+        },
+        starsEnabled: false,
+        atmosphereEnabled: false,
+        lighting: {
+          type: "virtual",
+        },
+      };
+      viewElement.constraints = {
+        altitude: {
+          min: 5000000,
+        },
+      };
+      viewElement.popup = {
+        dockEnabled: true,
+        dockOptions: {
+          position: "top-right",
+          breakpoint: false,
+          buttonEnabled: false,
+        },
+        visibleElements: {
+          collapseButton: false,
+        },
+      };
+
+      await viewElement.viewOnReady();
+
+      /*****************************************************************
+       * UI interactions
+       *****************************************************************/
+      const exaggerateSwitch = document.getElementById("exaggerateSwitch");
+
+      exaggerateSwitch.addEventListener("calciteSwitchChange", (event) => {
+        if (event.target.checked) {
+          map.ground = { layers: [elevationLayer] };
+        } else {
+          map.ground = "world-elevation";
+        }
+      });
+    </script>
+  </head>
+
+  <body>
+    <arcgis-scene
+      camera-position="-55.039, 14.948, 19921223.3"
+      camera-tilt="0.13"
+      camera-heading="2.03"
+      alpha-compositing-enabled>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <calcite-chip label="Toggle elevation" slot="bottom-right">
+        <calcite-label layout="inline">
+          <calcite-switch id="exaggerateSwitch" checked></calcite-switch>
+          Exaggeration
+        </calcite-label>
+      </calcite-chip>
+    </arcgis-scene>
+  </body>
+</html>

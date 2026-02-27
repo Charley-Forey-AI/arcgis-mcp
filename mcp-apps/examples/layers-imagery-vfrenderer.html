@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Visualizing wind data with VectorFieldRenderer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map basemap="dark-gray-vector" center="-100, 38" zoom="3">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-expand slot="top-right">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+      <arcgis-time-slider mode="instant" slot="bottom-left" time-visible></arcgis-time-slider>
+    </arcgis-map>
+
+    <script type="module">
+      const ImageryLayer = await $arcgis.import("@arcgis/core/layers/ImageryLayer.js");
+
+      const timeSlider = document.querySelector("arcgis-time-slider");
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.componentOnReady(); // Wait for property methods to be ready.
+      // Initialize the layer with a renderer to visualize wind speed and rotation.
+      const layer = new ImageryLayer({
+        url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/ScientificData/NDFD_wind/ImageServer",
+        renderer: {
+          type: "vector-field", // autocasts as new VectorFieldRenderer()
+          style: "beaufort-kn", // Beaufort point symbol (knots)
+          flowRepresentation: "flow-to", // Point arrows in the direction the wind moves.
+          symbolTileSize: 20,
+          visualVariables: [
+            {
+              type: "size", // autocasts as new SizeVariable()
+              field: "Vector_Magnitude", // Read wind speed from the magnitude band.
+              maxDataValue: 32,
+              maxSize: "100px",
+              minDataValue: 0.04,
+              minSize: "8px",
+            },
+            {
+              type: "rotation", // autocasts as new RotationVariable()
+              field: "Vector_Direction", // Read wind direction from the direction band.
+              rotationType: "geographic", // Rotate arrows clockwise relative to true north.
+            },
+          ],
+        },
+      });
+      viewElement.map.add(layer);
+      await viewElement.whenLayerView(layer);
+
+      // Format the time slider tick labels.
+      const dateTimeFormat = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" });
+      const labelFormatFunction = (value) => dateTimeFormat.format(value);
+      // Set the time slider properties.
+      const { fullTimeExtent, interval } = layer.timeInfo;
+      timeSlider.fullTimeExtent = fullTimeExtent;
+      timeSlider.stops = { interval };
+      timeSlider.tickConfigs = [
+        { labelsVisible: true, mode: "count", values: 4, labelFormatFunction },
+      ];
+    </script>
+  </body>
+</html>

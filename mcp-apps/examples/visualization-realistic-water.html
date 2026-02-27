@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Realistic water visualization in 3D | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      #waterPanel {
+        --calcite-panel-background-color: white;
+      }
+      #navy {
+        --calcite-button-background-color: #25427c;
+      }
+      #green {
+        --calcite-button-background-color: #039962;
+      }
+      #turqoise {
+        --calcite-button-background-color: #a2f9f5;
+      }
+      .button-container {
+        display: flex;
+        justify-content: space-around;
+      }
+      calcite-block {
+        --calcite-block-border-color: white;
+        --calcite-font-weight-medium: 550;
+      }
+      calcite-slider {
+        --calcite-font-weight-medium: 450;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="8ede93ea9d8d48bc8cdcbea775936a13">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <calcite-panel id="waterPanel" slot="top-right" scale="s">
+        <calcite-block heading="Wave direction" expanded>
+          <calcite-slider
+            id="waveSlider"
+            min="0"
+            max="360"
+            value="260"
+            step="1"
+            label-handles></calcite-slider>
+        </calcite-block>
+        <calcite-block heading="Wave strength" expanded>
+          <calcite-radio-button-group id="waveStrengthRadio" layout="vertical" scale="s">
+            <calcite-label layout="inline">
+              <calcite-radio-button value="calm"></calcite-radio-button>
+              Calm
+            </calcite-label>
+            <calcite-label layout="inline">
+              <calcite-radio-button value="rippled"></calcite-radio-button>
+              Rippled
+            </calcite-label>
+            <calcite-label layout="inline">
+              <calcite-radio-button value="slight"></calcite-radio-button>
+              Slight
+            </calcite-label>
+            <calcite-label layout="inline">
+              <calcite-radio-button value="moderate" checked></calcite-radio-button>
+              Moderate
+            </calcite-label>
+          </calcite-radio-button-group>
+        </calcite-block>
+        <calcite-block id="colorBlock" heading="Dominant color" expanded>
+          <div class="button-container">
+            <calcite-button id="navy" scale="s" appearance="solid" round></calcite-button>
+            <calcite-button id="green" scale="s" appearance="solid" round></calcite-button>
+            <calcite-button id="turqoise" scale="s" appearance="solid" round></calcite-button>
+          </div>
+        </calcite-block>
+      </calcite-panel>
+    </arcgis-scene>
+
+    <script type="module">
+      const [FeatureLayer] = await $arcgis.import(["@arcgis/core/layers/FeatureLayer.js"]);
+
+      /***********************************
+       * Get a reference to the Scene component
+       ***********************************/
+      const viewElement = document.querySelector("arcgis-scene");
+
+      /***********************************
+       * Add polygon layer with water body
+       ***********************************/
+      const waterLayer = new FeatureLayer({
+        portalItem: {
+          id: "0554d0cb56e845c786cea7b12d9907d0",
+        },
+        elevationInfo: {
+          mode: "absolute-height",
+          offset: 0,
+        },
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "polygon-3d",
+            symbolLayers: [
+              {
+                type: "water",
+                waveDirection: 260,
+                color: "#25427c",
+                waveStrength: "moderate",
+                waterbodySize: "medium",
+              },
+            ],
+          },
+        },
+      });
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+      viewElement.map.add(waterLayer);
+
+      // Set water direction
+      const slider = document.getElementById("waveSlider");
+      slider.addEventListener("calciteSliderInput", () => {
+        const renderer = waterLayer.renderer.clone();
+        renderer.symbol.symbolLayers.getItemAt(0).waveDirection = slider.value;
+        waterLayer.renderer = renderer;
+      });
+
+      // Set water strength
+      const waveStrengthRadio = document.getElementById("waveStrengthRadio");
+      waveStrengthRadio.addEventListener("calciteRadioButtonGroupChange", () => {
+        const renderer = waterLayer.renderer.clone();
+        renderer.symbol.symbolLayers.getItemAt(0).waveStrength =
+          waveStrengthRadio.selectedItem.value;
+        waterLayer.renderer = renderer;
+      });
+
+      // Set water color
+      document.getElementById("navy").addEventListener("click", () => setWaterColor("#25427c"));
+      document.getElementById("green").addEventListener("click", () => setWaterColor("#039962"));
+      document.getElementById("turqoise").addEventListener("click", () => setWaterColor("#a2f9f5"));
+
+      function setWaterColor(color) {
+        const renderer = waterLayer.renderer.clone();
+        renderer.symbol.symbolLayers.getItemAt(0).color = color;
+        waterLayer.renderer = renderer;
+      }
+    </script>
+  </body>
+</html>

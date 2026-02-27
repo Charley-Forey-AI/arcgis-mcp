@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>StreamLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      calcite-panel {
+        width: 300px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map basemap="gray-vector" center="-117.98118, 34.00679" zoom="9">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <calcite-panel slot="top-right">
+        <calcite-block expanded id="feaure-count-block" heading="Stream service url:">
+          <calcite-input-text
+            id="stream-service-url-input"
+            value="https://geoeventsample1.esri.com:6443/arcgis/rest/services/LABus/StreamServer"></calcite-input-text
+          ><br />
+          <calcite-button id="toggleStreamLayerButton" width="full">Add stream layer</calcite-button
+          ><br /><br />
+          <div>
+            Only display features within current extent: <br />
+            1. Zoom to a desired extent <br />
+            2. Click Apply spatial filter button
+          </div>
+          <calcite-button id="toggle-filter-button" disabled width="full">
+            Apply spatial filter
+          </calcite-button>
+        </calcite-block>
+      </calcite-panel>
+      <arcgis-layer-list slot="bottom-left"></arcgis-layer-list>
+    </arcgis-map>
+
+    <script type="module">
+      const [StreamLayer, Polygon, Graphic, reactiveUtils] = await $arcgis.import([
+        "@arcgis/core/layers/StreamLayer.js",
+        "@arcgis/core/geometry/Polygon.js",
+        "@arcgis/core/Graphic.js",
+        "@arcgis/core/core/reactiveUtils.js",
+      ]);
+
+      let streamLayer, streamLayerView;
+
+      const viewElement = document.querySelector("arcgis-map");
+
+      // Connect click events to UI buttons
+      const toggleLayerButton = document.getElementById("toggleStreamLayerButton");
+
+      /*************************************************
+       * Add or remove StreamLayer from a button click
+       *************************************************/
+      toggleLayerButton.addEventListener("click", () => {
+        if (streamLayer) {
+          viewElement.map.remove(streamLayer);
+          streamLayer.destroy();
+          streamLayer = null;
+          viewElement.graphics.removeAll();
+          processDisconnect();
+        } else {
+          addStreamLayer();
+        }
+      });
+
+      /***********************************************************************
+       * Apply or remove FeatureEffect from StreamLayerView from a button click
+       ***********************************************************************/
+      const geometryFilterButton = document.getElementById("toggle-filter-button");
+      geometryFilterButton.addEventListener("click", () => {
+        if (!streamLayerView) return;
+
+        const expandedExtent = viewElement.extent.clone().expand(0.8);
+        // set the effect to null if user clicks clear button
+        if (streamLayerView.featureEffect) {
+          streamLayerView.featureEffect = null;
+          viewElement.graphics.removeAll();
+          geometryFilterButton.textContent = "Apply spatial filter";
+        } else {
+          // apply an effect to the layer view if user clicks apply button
+          geometryFilterButton.textContent = "Clear spatial filter";
+          streamLayerView.featureEffect = {
+            filter: {
+              geometry: expandedExtent,
+            },
+            excludedEffect: "grayscale(100%) opacity(30%)",
+          };
+          viewElement.graphics.removeAll();
+          viewElement.graphics.add(
+            new Graphic({
+              geometry: expandedExtent,
+              symbol: {
+                type: "simple-fill",
+                style: "none",
+                outline: {
+                  color: [5, 112, 176],
+                  width: 2,
+                },
+              },
+            }),
+          );
+        }
+      });
+
+      async function addStreamLayer() {
+        // URL to stream service
+        const serviceUrl = document.getElementById("stream-service-url-input").value;
+
+        // Construct Stream Layer
+        streamLayer = new StreamLayer({
+          url: serviceUrl,
+          purgeOptions: {
+            displayCount: 10000,
+          },
+        });
+
+        viewElement.map.add(streamLayer);
+
+        // When graphics controller created, register listeners for events
+        streamLayerView = await viewElement.whenLayerView(streamLayer);
+        processConnect();
+
+        reactiveUtils.watch(
+          () => streamLayerView.connectionStatus,
+          (value) => {
+            if (value === "connected") {
+              processConnect();
+            } else {
+              processDisconnect();
+            }
+          },
+        );
+      }
+
+      function processConnect() {
+        toggleLayerButton.textContent = "Remove stream layer";
+        geometryFilterButton.disabled = false;
+      }
+
+      function processDisconnect() {
+        toggleLayerButton.textContent = "Add stream layer";
+        geometryFilterButton.disabled = true;
+        geometryFilterButton.textContent = "Apply spatial filter";
+      }
+    </script>
+  </body>
+</html>

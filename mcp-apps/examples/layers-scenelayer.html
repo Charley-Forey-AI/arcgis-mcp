@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Intro to SceneLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene
+      basemap="dark-gray-vector"
+      ground="world-elevation"
+      camera-position="-74.0338, 40.6913, 707"
+      camera-tilt="81"
+      camera-heading="50">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+    </arcgis-scene>
+
+    <script type="module">
+      const SceneLayer = await $arcgis.import("@arcgis/core/layers/SceneLayer.js");
+
+      // Get a reference to the Scene component
+      const viewElement = document.querySelector("arcgis-scene");
+
+      // Create a SceneLayer instance
+      const sceneLayer = new SceneLayer({
+        portalItem: {
+          id: "2e0761b9a4274b8db52c4bf34356911e",
+        },
+        popupEnabled: false,
+      });
+
+      // Create a MeshSymbol3D for symbolizing the SceneLayer
+      const symbol = {
+        type: "mesh-3d", // autocasts as new MeshSymbol3D()
+        symbolLayers: [
+          {
+            type: "fill", // autocasts as new FillSymbol3DLayer()
+            // If the value of material is not assigned, the default color will be grey
+            material: {
+              color: [244, 247, 134],
+            },
+          },
+        ],
+      };
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+
+      // Add the SceneLayer to the map
+      viewElement.map.add(sceneLayer);
+
+      // Add the renderer to the SceneLayer
+      sceneLayer.renderer = {
+        type: "simple", // autocasts as new SimpleRenderer()
+        symbol: symbol,
+      };
+    </script>
+  </body>
+</html>

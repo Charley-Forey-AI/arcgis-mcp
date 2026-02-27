@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Volume measurement analysis object | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      .volume-panel {
+        width: 310px;
+      }
+
+      .content-container {
+        display: flex;
+        flex-direction: column;
+      }
+
+      calcite-block {
+        margin-block: 0;
+        --calcite-block-padding: 0px;
+        padding: 15px 15px 5px;
+      }
+
+      #instructions {
+        font-weight: 400;
+        height: 2.2rem;
+      }
+
+      .measurement-vals {
+        font-weight: 500;
+      }
+
+      #phase-selector {
+        text-align: center;
+        margin: auto;
+        left: 0;
+        right: 0;
+        align-items: center;
+      }
+
+      calcite-segmented-control-item {
+        flex: 1;
+      }
+
+      #unit-label {
+        height: 28px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene viewing-mode="global" item-id="3a891df7b5da4a40bb46a057d4629560" popup-disabled>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <calcite-panel
+        slot="top-right"
+        class="volume-panel"
+        expanded
+        id="project-panel"
+        label="Project phase"
+        loading>
+        <div class="content-container">
+          <calcite-block expanded label="phase">
+            <calcite-label scale="l">
+              Select the project phase
+              <calcite-segmented-control width="full" scale="m" id="phase-selector">
+                <calcite-segmented-control-item value="phase1" checked
+                  >1<br />Volume Estimate
+                </calcite-segmented-control-item>
+                <calcite-segmented-control-item value="phase2"
+                  >2<br />Completed Build</calcite-segmented-control-item
+                >
+                <calcite-segmented-control-item value="phase3"
+                  >3<br />Measure Stockpiles</calcite-segmented-control-item
+                >
+              </calcite-segmented-control>
+            </calcite-label>
+            <calcite-label id="instructions"
+              >Estimating cut and fill volumes to flatten the field for construction.
+            </calcite-label>
+          </calcite-block>
+          <calcite-block label="measurements" id="block-measurements" expanded>
+            <calcite-label layout="inline-space-between" id="unit-label"
+              >Unit
+              <calcite-select id="units-select" scale="s">
+                <calcite-option value="metric" selected>Metric</calcite-option>
+                <calcite-option value="imperial">Imperial</calcite-option>
+                <calcite-option value="cubic-meters">Cubic meters</calcite-option>
+                <calcite-option value="cubic-kilometers">Cubic kilometers</calcite-option>
+                <calcite-option value="cubic-feet">Cubic feet</calcite-option>
+                <calcite-option value="cubic-yards">Cubic yards</calcite-option>
+                <calcite-option value="cubic-miles">Cubic miles</calcite-option>
+              </calcite-select>
+            </calcite-label>
+            <calcite-label alignment="start" layout="inline-space-between"
+              >Cut Volume
+              <div id="cut-volume" class="measurement-vals">—</div>
+            </calcite-label>
+            <calcite-label alignment="start" layout="inline-space-between"
+              >Fill Volume
+              <div id="fill-volume" class="measurement-vals">—</div>
+            </calcite-label>
+            <calcite-label alignment=" start" layout="inline-space-between"
+              >Net Volume
+              <div id="net-volume" class="measurement-vals">—</div>
+            </calcite-label>
+            <calcite-label id="new-measurement-label" hidden>
+              <calcite-button id="new-measurement" width="full">New Measurement</calcite-button>
+            </calcite-label>
+            <calcite-label id="edit-measurement-label">
+              <calcite-button id="edit-measurement" width="full">Edit Measurement</calcite-button>
+            </calcite-label>
+          </calcite-block>
+        </div>
+      </calcite-panel>
+      <calcite-alert icon label="Measurement unavailable" kind="warning" scale="s">
+        <div slot="title">Volume measurement unavailable</div>
+        <div slot="message" id="error-message"></div>
+      </calcite-alert>
+    </arcgis-scene>
+
+    <script type="module">
+      const [VolumeMeasurementAnalysis, VolumeMeasurementAnalysisView3D, reactiveUtils] =
+        await $arcgis.import([
+          "@arcgis/core/analysis/VolumeMeasurementAnalysis.js",
+          "@arcgis/core/views/3d/analysis/VolumeMeasurementAnalysisView3D.js",
+          "@arcgis/core/core/reactiveUtils.js",
+        ]);
+
+      // === CONFIGURATION ===
+      let trackElevation = 659; // elevation of the track in meters
+      const instructions = {
+        measureStart: "Click in the scene to place points. Double-click to finish.",
+        measureEdit: "Drag existing points to adjust the polygon, or add new points.",
+      };
+      const unitConfig = {
+        "cubic-meters": { symbol: "m³", precision: 2 },
+        "cubic-kilometers": { symbol: "km³", precision: 6 },
+        "cubic-feet": { symbol: "ft³", precision: 2 },
+        "cubic-yards": { symbol: "yd³", precision: 2 },
+        "cubic-miles": { symbol: "mi³", precision: 6 },
+      };
+
+      // === DOM REFERENCES ===
+
+      const viewElement = document.querySelector("arcgis-scene");
+      const newMeasurementLabel = document.getElementById("new-measurement-label");
+      const newMeasurementButton = document.getElementById("new-measurement");
+      const editMeasurementLabel = document.getElementById("edit-measurement-label");
+      const editMeasurementButton = document.getElementById("edit-measurement");
+      const unitsSelector = document.getElementById("units-select");
+      const instructionsLabel = document.getElementById("instructions");
+      const phaseSelector = document.getElementById("phase-selector");
+      const measureBlock = document.getElementById("block-measurements");
+      const measurements = {
+        cut: document.getElementById("cut-volume"),
+        fill: document.getElementById("fill-volume"),
+        net: document.getElementById("net-volume"),
+      };
+
+      // === INITIALIZATION ===
+
+      // Cancel the placement operation at some later point
+      let placeAbortController = new AbortController();
+      // Current phase of the project
+      let projectPhase;
+      // Storing layers from the web scene
+      const layers = {};
+
+      // === ANALYSIS ===
+
+      const volumeMeasurementAnalysis = new VolumeMeasurementAnalysis({
+        measureType: "cut-fill",
+        cutFillOptions: {
+          targetElevation: trackElevation, // meters
+        },
+        displayUnits: {
+          volume: "metric",
+          elevation: "metric",
+        },
+        inputUnits: {
+          elevation: "meters",
+        },
+      });
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+      // Wait for all the layers to fully update to show the UI and the measurements
+      await reactiveUtils.whenOnce(() => !viewElement.updating);
+      document.getElementById("project-panel").loading = false;
+      // All the project phases information is stored in the web scene's layers
+      await extractLayerReferences();
+      // Set the input geometry
+      volumeMeasurementAnalysis.geometry = layers.trackPolygon.geometry;
+      // Add the analysis to the scene
+      viewElement.analyses.add(volumeMeasurementAnalysis);
+      // Await the analysis view to retrieve results
+      const analysisView = await viewElement.whenAnalysisView(volumeMeasurementAnalysis);
+
+      // Edit the existing measurement (phase 1)
+      editMeasurementButton.addEventListener("click", async () => {
+        if (!analysisView.interactive) {
+          analysisView.interactive = true;
+          editMeasurementButton.textContent = "Finish Editing";
+        } else {
+          analysisView.interactive = false;
+          editMeasurementButton.textContent = "Edit Measurement";
+        }
+      });
+
+      // Place new measurement (phase 3)
+      newMeasurementButton.addEventListener("click", async () => {
+        resetPlacement();
+        try {
+          instructionsLabel.textContent = instructions.measureStart;
+          await analysisView.place({ signal: placeAbortController.signal });
+          instructionsLabel.textContent = instructions.measureEdit;
+        } catch (error) {
+          console.error(error.message);
+        }
+      });
+
+      // Change display units
+      unitsSelector.addEventListener("calciteSelectChange", () => {
+        volumeMeasurementAnalysis.displayUnits.volume = unitsSelector.value;
+      });
+
+      // Change the project phase
+      phaseSelector.addEventListener("calciteSegmentedControlChange", () => {
+        projectPhase = phaseSelector.value;
+        phaseConfig[projectPhase]?.(analysisView);
+      });
+
+      // Watch the result and update the volume measurement labels
+      reactiveUtils.watch(
+        () => analysisView?.result,
+        (result) => {
+          const volumeKeys = ["cut", "fill", "net"];
+          for (const key of volumeKeys) {
+            const volume = result?.[`${key}Volume`];
+            measurements[key].textContent = formatVolume(volume?.value, volume?.unit);
+          }
+        },
+        { initial: true },
+      );
+
+      // Issue warnings when measurement errors are encountered
+      reactiveUtils.watch(
+        () => analysisView?.error,
+        (error) => {
+          const alert = document.querySelector("calcite-alert");
+          if (!error) {
+            alert.open = false;
+            return;
+          }
+          if (error.name == "distance-too-far" || error.name == "distance-too-close") {
+            document.getElementById("error-message").textContent = error.message;
+            alert.open = true;
+          }
+        },
+      );
+
+      // === HELPER FUNCTIONS ===
+
+      // App states for each project phase
+      const phaseConfig = {
+        phase1: async (analysisView) => {
+          resetPlacement();
+          analysisView.interactive = false;
+          editMeasurementButton.textContent = "Edit Measurement";
+          newMeasurementLabel.hidden = true;
+          measureBlock.expanded = true;
+          await applySlide(0);
+          editMeasurementLabel.hidden = false;
+          volumeMeasurementAnalysis.measureType = "cut-fill";
+          volumeMeasurementAnalysis.cutFillOptions.targetElevation = trackElevation;
+          volumeMeasurementAnalysis.geometry = layers.trackPolygon.geometry;
+        },
+        phase2: async (analysisView) => {
+          resetPlacement();
+          measureBlock.expanded = false;
+          await applySlide(1);
+        },
+        phase3: async (analysisView) => {
+          resetPlacement();
+          editMeasurementLabel.hidden = true;
+          await applySlide(2);
+          volumeMeasurementAnalysis.measureType = "stockpile";
+          newMeasurementLabel.hidden = false;
+          measureBlock.expanded = true;
+        },
+      };
+
+      // Get the project bounds from the layer in the web scene
+      async function getProjectBoundsGeometry() {
+        if (!layers.projectBounds) {
+          return;
+        }
+        const query = layers.projectBounds.createQuery();
+        query.where = "1=1";
+        query.returnZ = true;
+        query.returnGeometry = true;
+        try {
+          const featureSet = await layers.projectBounds.queryFeatures(query);
+          const geometry = featureSet.features[0];
+          if (geometry) {
+            return geometry;
+          }
+        } catch (error) {
+          console.log(error);
+        }
+      }
+
+      // Apply a slide by index to set desired visibility and messages
+      async function applySlide(slideNumber) {
+        const slides = viewElement.map.presentation.slides;
+        instructionsLabel.textContent = slides.at(slideNumber)?.description?.text ?? "";
+        await slides.at(slideNumber).applyTo(viewElement.view);
+      }
+
+      function resetPlacement() {
+        placeAbortController?.abort();
+        placeAbortController = new AbortController();
+        volumeMeasurementAnalysis.geometry = null;
+      }
+
+      // Format the value and number of decimal places
+      function formatVolume(value, unit) {
+        if (value == null || unit == null) {
+          return "—";
+        }
+        const config = unitConfig[unit];
+        if (!config) {
+          return `${value} ${unit}`;
+        }
+        return `${roundValue(value, config.precision)} ${config.symbol}`;
+      }
+
+      function roundValue(value, decimals = 0) {
+        const factor = Math.pow(10, decimals);
+        return Math.round(value * factor) / factor;
+      }
+
+      function findLayerByTitle(layerTitle) {
+        return viewElement.map.allLayers.find((item) => item.title === layerTitle);
+      }
+
+      async function extractLayerReferences() {
+        layers.groundMod = findLayerByTitle("VMA Terrain Modification");
+        layers.trackAndField = findLayerByTitle("Track and Field");
+        layers.projectBounds = findLayerByTitle("ProjectBoundsWGS");
+        layers.trackPolygon = await getProjectBoundsGeometry();
+      }
+    </script>
+  </body>
+</html>

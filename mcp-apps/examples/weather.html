@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Weather component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #selection {
+        position: absolute;
+        bottom: 20px;
+        left: 50px;
+        right: 50px;
+        display: flex;
+        justify-content: center;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="c56dab9e4d1a4b0c9d1ee7f589343516">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <arcgis-expand slot="top-right" group="top-right" expanded>
+        <arcgis-weather> </arcgis-weather>
+      </arcgis-expand>
+      <arcgis-expand slot="top-right" group="top-right">
+        <arcgis-daylight> </arcgis-daylight>
+      </arcgis-expand>
+    </arcgis-scene>
+
+    <calcite-segmented-control id="selection" width="full">
+      <calcite-segmented-control-item value="noFlooding" checked
+        >No flooding</calcite-segmented-control-item
+      >
+      <calcite-segmented-control-item value="flooding">Flooding</calcite-segmented-control-item>
+    </calcite-segmented-control>
+
+    <script type="module">
+      const [RainyWeather, CloudyWeather] = await $arcgis.import([
+        "@arcgis/core/views/3d/environment/RainyWeather.js",
+        "@arcgis/core/views/3d/environment/CloudyWeather.js",
+      ]);
+
+      const viewElement = document.querySelector("arcgis-scene");
+      await viewElement.viewOnReady();
+
+      const weatherSettings = {
+        cloudy: new CloudyWeather({
+          cloudCover: 0.93,
+        }),
+        rainy: new RainyWeather({
+          cloudCover: 0.7,
+          precipitation: 0.3,
+        }),
+      };
+
+      viewElement.environment.weather = weatherSettings.cloudy;
+
+      // Find the layer for the
+      let floodLevel = viewElement.map.allLayers.find((layer) => layer.title === "Flood Level");
+
+      const selection = document.getElementById("selection");
+
+      selection.addEventListener("calciteSegmentedControlChange", () => {
+        switch (selection.selectedItem.value) {
+          case "flooding":
+            // Change the weather to rainy to match the flooding scenario
+            viewElement.environment.weather = weatherSettings.rainy;
+            // Turn on the water layer showing the flooding
+            floodLevel.visible = true;
+            break;
+
+          case "noFlooding":
+            // Change the weather back to cloudy
+            viewElement.environment.weather = weatherSettings.cloudy;
+
+            // Turn off the water layer showing the flooding
+            floodLevel.visible = false;
+            break;
+        }
+      });
+    </script>
+  </body>
+</html>

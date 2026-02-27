@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Bookmarks component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body class="calcite-mode-dark">
+    <arcgis-map item-id="70b726074af04a7e9839d8a07f64c039">
+      <arcgis-expand slot="top-right" expanded>
+        <arcgis-bookmarks
+          drag-enabled
+          show-add-bookmark-button
+          show-edit-bookmark-button
+          hide-time></arcgis-bookmarks>
+      </arcgis-expand>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-expand slot="top-left">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+      <arcgis-time-slider slot="bottom-left"></arcgis-time-slider>
+      <calcite-button id="clearFilter" slot="bottom-right" kind="neutral"
+        >Clear filter</calcite-button
+      >
+    </arcgis-map>
+    <script type="module">
+      const timeUtils = await $arcgis.import("@arcgis/core/support/timeUtils.js");
+
+      const viewElement = document.querySelector("arcgis-map");
+      const timeSlider = document.querySelector("arcgis-time-slider");
+      const bookmarks = document.querySelector("arcgis-bookmarks");
+
+      // wait for the view to be ready
+      await viewElement.viewOnReady();
+
+      // apply time slider settings from the web map
+      timeUtils.getTimeSliderSettingsFromWebDocument(viewElement.map).then((timeSliderSettings) => {
+        timeSlider.applyTimeSliderSettings(timeSliderSettings);
+      });
+      const layer = viewElement.map.layers.getItemAt(0);
+      bookmarks.addEventListener("arcgisBookmarkSelect", (event) => {
+        let hurricaneName = event.detail.bookmark.name.toUpperCase();
+        // apply a feature effect for the selected hurricane
+        layer.featureEffect = {
+          filter: {
+            where: "Name = '" + hurricaneName + "'",
+          },
+          excludedEffect: "grayscale(100%) opacity(30%)",
+        };
+      });
+      // remove the feature effect when the clear filter button is clicked
+      document.getElementById("clearFilter").addEventListener("click", () => {
+        layer.featureEffect = null;
+      });
+    </script>
+  </body>
+</html>

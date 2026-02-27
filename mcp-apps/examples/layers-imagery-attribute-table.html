@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>ImageryLayer - raster attribute table | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map basemap="dark-gray-vector" center="-112.6, 39.6" zoom="5">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+    </arcgis-map>
+
+    <script type="module">
+      const ImageryLayer = await $arcgis.import("@arcgis/core/layers/ImageryLayer.js");
+
+      const url =
+        "https://sampleserver6.arcgisonline.com/arcgis/rest/services/NLCDLandCover2001/ImageServer";
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.componentOnReady(); // Wait for the property methods to be ready.
+
+      const graphics = {};
+
+      // Convert the single band of land cover codes into three bands of RGB colors.
+      const pixelFilter = (pixelData) => {
+        if (!(pixelData && pixelData.pixelBlock && pixelData.pixelBlock.pixels)) return;
+
+        const { height, width, pixels } = pixelData.pixelBlock;
+        const mask = []; // Store each pixel as valid (1) or invalid (0).
+        const [red, green, blue] = [[], [], []];
+
+        const pixelsInPixelBlock = width * height;
+
+        for (let i = 0; i < pixelsInPixelBlock; i++) {
+          const landCoverCode = pixels[0][i]; // Derive this from the current single band.
+          const rgb = graphics[landCoverCode]; // Look up the RGB array for the code.
+          mask[i] = rgb ? 1 : 0; // Validate the pixel if there is a color stored for it.
+          [red[i], green[i], blue[i]] = rgb || [0, 0, 0]; // Set the RGB channels.
+        }
+
+        pixelData.pixelBlock.pixels = [red, green, blue]; // Replace single band with RGB bands.
+        pixelData.pixelBlock.statistics = null; // Reset statistics.
+        pixelData.pixelBlock.pixelType = "u8"; // Use unsigned 8-bit for color.
+        pixelData.pixelBlock.mask = mask; // Apply mask so only valid pixels are rendered.
+      };
+
+      const layer = new ImageryLayer({ url, pixelFilter });
+      viewElement.map.add(layer);
+      await viewElement.whenLayerView(layer);
+
+      // Filter desired land cover types and RGB values; store them as key-value pairs.
+      layer.serviceRasterInfo.attributeTable.features.forEach((item) => {
+        const { ClassName, Red, Green, Blue } = item.attributes;
+        if (["Barren Land", "Shrub/Scrub"].includes(ClassName)) {
+          graphics[item.attributes.Value] = [Red, Green, Blue];
+        }
+      });
+    </script>
+  </body>
+</html>

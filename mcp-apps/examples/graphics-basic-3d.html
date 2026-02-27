@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Add Graphics to a Scene component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene
+      basemap="hybrid"
+      camera-position="-0.177461, 51.445446, 1266.70496"
+      camera-heading="0.34445"
+      camera-tilt="82.9553630">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+    </arcgis-scene>
+
+    <script type="module">
+      const [GraphicsLayer, Graphic] = await $arcgis.import([
+        "@arcgis/core/layers/GraphicsLayer.js",
+        "@arcgis/core/Graphic.js",
+      ]);
+
+      const graphicsLayer = new GraphicsLayer();
+
+      /********************************************************************
+       * Get a reference to the Scene component and add the graphics layer
+       ********************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+
+      await viewElement.viewOnReady();
+      viewElement.map.add(graphicsLayer);
+
+      /*************************
+       * Add a 3D point graphic
+       *************************/
+
+      // London
+      const point = {
+        type: "point", // autocasts as new Point()
+        x: -0.178,
+        y: 51.48791,
+        z: 1010,
+      };
+
+      const markerSymbol = {
+        type: "simple-marker", // autocasts as new SimpleMarkerSymbol()
+        color: [226, 119, 40],
+        outline: {
+          // autocasts as new SimpleLineSymbol()
+          color: [255, 255, 255],
+          width: 2,
+        },
+      };
+
+      const pointGraphic = new Graphic({
+        geometry: point,
+        symbol: markerSymbol,
+      });
+
+      graphicsLayer.add(pointGraphic);
+
+      /****************************
+       * Add a 3D polyline graphic
+       ****************************/
+
+      const polyline = {
+        type: "polyline", // autocasts as new Polyline()
+        paths: [
+          [-0.178, 51.48791, 0],
+          [-0.178, 51.48791, 1000],
+        ],
+      };
+
+      const lineSymbol = {
+        type: "simple-line", // autocasts as SimpleLineSymbol()
+        color: [226, 119, 40],
+        width: 4,
+      };
+
+      const polylineGraphic = new Graphic({
+        geometry: polyline,
+        symbol: lineSymbol,
+      });
+
+      graphicsLayer.add(polylineGraphic);
+
+      /***************************
+       * Add a 3D polygon graphic
+       ***************************/
+
+      const polygon = {
+        type: "polygon", // autocasts as new Polygon()
+        rings: [
+          [-0.184, 51.48391, 400],
+          [-0.184, 51.49091, 500],
+          [-0.172, 51.49091, 500],
+          [-0.172, 51.48391, 400],
+          [-0.184, 51.48391, 400],
+        ],
+      };
+
+      const fillSymbol = {
+        type: "simple-fill", // autocasts as new SimpleFillSymbol()
+        color: [227, 139, 79, 0.8],
+        outline: {
+          // autocasts as new SimpleLineSymbol()
+          color: [255, 255, 255],
+          width: 2,
+        },
+      };
+
+      const polygonGraphic = new Graphic({
+        geometry: polygon,
+        symbol: fillSymbol,
+      });
+
+      graphicsLayer.add(polygonGraphic);
+    </script>
+  </body>
+</html>

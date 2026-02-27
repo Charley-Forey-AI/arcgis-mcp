@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>CSVLayer - Project points on the fly | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background-color: black;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-expand slot="top-left" mode="floating">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+    </arcgis-map>
+
+    <script type="module">
+      const [Map, CSVLayer, Collection] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/CSVLayer.js",
+        "@arcgis/core/core/Collection.js",
+      ]);
+
+      const url = "https://arcgis.github.io/arcgis-samples-javascript/sample-data/hurricanes.csv";
+
+      const csvLayer = new CSVLayer({
+        title: "Hurricanes",
+        url: url,
+        copyright: "NOAA",
+        popupTemplate: {
+          title: "{Name}",
+          content: [
+            {
+              type: "text",
+              text: "Category {Category} storm with that occurred at {ISO_time}.",
+            },
+            {
+              type: "fields",
+              fieldInfos: [
+                {
+                  fieldName: "wmo_pres",
+                  label: "Pressure",
+                },
+                {
+                  fieldName: "wmo_wind",
+                  label: "Wind Speed (mph)",
+                },
+              ],
+            },
+          ],
+          fieldInfos: [
+            {
+              fieldName: "ISO_time",
+              format: {
+                dateFormat: "short-date-short-time",
+              },
+            },
+          ],
+        },
+        renderer: {
+          type: "unique-value",
+          field: "Category",
+          uniqueValueInfos: createUniqueValueInfos(),
+        },
+      });
+
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.map = new Map({
+        basemap: {
+          portalItem: {
+            id: "3113eacc129942b4abde490a51aeb33f",
+          },
+        },
+        layers: [csvLayer],
+      });
+
+      await viewElement.viewOnReady();
+
+      // set the default highlight options. This will be used by the popup
+      viewElement.highlights = new Collection([
+        {
+          name: "default",
+          color: "#ff642e",
+          haloOpacity: 1,
+          fillOpacity: 0.25,
+        },
+      ]);
+
+      viewElement.popup = {
+        dockEnabled: true,
+        dockOptions: {
+          breakpoint: false,
+        },
+      };
+
+      function createUniqueValueInfos() {
+        const fireflyImages = ["cat1.png", "cat2.png", "cat3.png", "cat4.png", "cat5.png"];
+        const baseUrl = "https://arcgis.github.io/arcgis-samples-javascript/sample-data/";
+
+        return fireflyImages.map((url, i) => {
+          return {
+            value: i + 1, // Category number
+            symbol: {
+              type: "picture-marker",
+              url: baseUrl + url,
+            },
+          };
+        });
+      }
+    </script>
+  </body>
+</html>

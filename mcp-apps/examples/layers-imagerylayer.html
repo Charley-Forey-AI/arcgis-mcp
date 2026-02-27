@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Intro to ImageryLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map basemap="gray-vector" zoom="4" center="-100, 40"> </arcgis-map>
+    <script type="module">
+      // Import layer class.
+      const ImageryLayer = await $arcgis.import("@arcgis/core/layers/ImageryLayer.js");
+
+      const layer = new ImageryLayer({
+        url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/NLCDLandCover2001/ImageServer",
+        format: "jpgpng", // server exports in either jpg or png format
+      });
+
+      // Get a reference to the Map component element.
+      const viewElement = document.querySelector("arcgis-map");
+
+      await viewElement.viewOnReady();
+
+      viewElement.map.add(layer);
+    </script>
+  </body>
+</html>

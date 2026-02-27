@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Update a renderer's attribute | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+  </head>
+
+  <body>
+    <calcite-shell>
+      <arcgis-map item-id="74a5a5d2e6784ef19578cbce8c808886">
+        <arcgis-zoom slot="top-right"></arcgis-zoom>
+        <arcgis-legend slot="top-left"></arcgis-legend>
+      </arcgis-map>
+      <calcite-shell-panel id="slider-panel" slot="panel-bottom">
+        <arcgis-time-slider
+          layout="auto"
+          mode="instant"
+          reference-element="arcgis-map"></arcgis-time-slider>
+      </calcite-shell-panel>
+    </calcite-shell>
+
+    <script type="module">
+      const yearSlider = document.querySelector("arcgis-time-slider");
+      const viewElement = document.querySelector("arcgis-map");
+
+      yearSlider.fullTimeExtent = {
+        start: new Date(1880, 0, 1),
+        end: new Date(2018, 0, 1),
+      };
+      yearSlider.timeExtent = {
+        start: new Date(1880, 0, 1),
+        end: new Date(1880, 0, 1),
+      };
+      yearSlider.stops = {
+        interval: {
+          value: 1,
+          unit: "years",
+        },
+      };
+      viewElement.timeExtent = yearSlider.timeExtent;
+
+      await viewElement.viewOnReady();
+
+      const view = viewElement.view;
+      const layer = view.map.layers.getItemAt(0);
+      const renderer = layer.renderer.clone();
+
+      const sizeVisualVariable = renderer.visualVariables.find(
+        (visualVariable) => visualVariable.type === "size",
+      );
+
+      // Returns the value of the "F{year}" field based on the slider's value.
+      // This expression will re-execute every time the slider's value changes
+      const valueExpression = `
+      Expects($feature, "F*");
+      if(HasValue($view, ["timeProperties", "currentEnd"])){
+        var y = Year($view.timeProperties.currentEnd);
+        var value = $feature["F" + y];
+        return value;
+      }
+      return null;
+    `;
+      // Update legend text to be more user friendly
+      const valueExpressionTitle = "Are temperatures significantly warmer or colder than normal?";
+
+      // Replace the field with the valueExpression so the user can dynamically
+      // explore the data as it changed from year to year
+      renderer.field = null;
+      renderer.valueExpression = valueExpression;
+      renderer.valueExpressionTitle = valueExpressionTitle;
+
+      // Since this is an above-and-below size renderer, we need to update
+      // the size visual variable to reflect the new valueExpression
+      sizeVisualVariable.field = null;
+      sizeVisualVariable.valueExpression = valueExpression;
+      sizeVisualVariable.valueExpressionTitle = valueExpressionTitle;
+      // Update legend text to be more user friendly
+      sizeVisualVariable.stops[0].label = "Colder";
+      sizeVisualVariable.stops[2].label = "Normal";
+      sizeVisualVariable.stops[4].label = "Warmer";
+
+      renderer.visualVariables = [sizeVisualVariable];
+      layer.renderer = renderer;
+    </script>
+  </body>
+</html>

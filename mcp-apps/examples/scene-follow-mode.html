@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Scene - follow mode | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #camera-mode {
+        position: absolute;
+        left: 33%;
+        right: 33%;
+        top: 1.5rem;
+      }
+
+      #time-slider {
+        position: absolute;
+        left: 5%;
+        right: 5%;
+        bottom: 1.5rem;
+        background-color: white;
+        display: flex;
+        padding: 0.5rem;
+        height: 6rem;
+      }
+
+      .slider-section {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        margin: 0.5rem 1.5rem;
+      }
+
+      .slider-section calcite-slider {
+        width: 100%;
+      }
+
+      #play-animation {
+        margin: 2.5rem 0.5rem;
+      }
+
+      #animation-playrate {
+        padding: 0.5rem;
+        position: absolute;
+        top: 0;
+        right: 0;
+      }
+
+      #time-info {
+        font-weight: bold;
+        font-size: 1rem;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene
+      camera-position="7.407, 46.3225, 2302.866"
+      camera-heading="270"
+      camera-tilt="85"
+      basemap="satellite"
+      ground="world-elevation">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <div id="time-slider">
+        <calcite-fab id="play-animation" icon="pause-f" scale="l"></calcite-fab>
+        <div class="slider-section">
+          <span id="time-info">12:45:26</span>
+          <span>Altitude: <span id="altitude-info">0</span> m</span>
+          <calcite-slider label-ticks=""></calcite-slider>
+        </div>
+
+        <calcite-segmented-control id="animation-playrate" scale="s">
+          <calcite-segmented-control-item value="0.5">x ½</calcite-segmented-control-item>
+          <calcite-segmented-control-item value="1" checked>x 1</calcite-segmented-control-item>
+          <calcite-segmented-control-item value="2">x 2</calcite-segmented-control-item>
+        </calcite-segmented-control>
+      </div>
+
+      <calcite-segmented-control id="camera-mode" width="full">
+        <calcite-segmented-control-item value="front" icon-start="chevrons-up" checked
+          >Front view</calcite-segmented-control-item
+        >
+        <calcite-segmented-control-item value="back" icon-start="chevrons-down"
+          >Back view</calcite-segmented-control-item
+        >
+        <calcite-segmented-control-item value="free" icon-start="move"
+          >Free view</calcite-segmented-control-item
+        >
+      </calcite-segmented-control>
+    </arcgis-scene>
+    <script type="module">
+      const [
+        GeoJSONLayer,
+        Field,
+        Graphic,
+        Point,
+        SimpleRenderer,
+        MeshSymbol3D,
+        FillSymbol3DLayer,
+        ObjectSymbol3DLayer,
+        PointSymbol3D,
+        Mesh,
+        Camera,
+        webMercatorUtils,
+        Polyline,
+        GraphicsLayer,
+        LineSymbol3D,
+        PathSymbol3DLayer,
+      ] = await $arcgis.import([
+        "@arcgis/core/layers/GeoJSONLayer.js",
+        "@arcgis/core/layers/support/Field.js",
+        "@arcgis/core/Graphic.js",
+        "@arcgis/core/geometry/Point.js",
+        "@arcgis/core/renderers/SimpleRenderer.js",
+        "@arcgis/core/symbols/MeshSymbol3D.js",
+        "@arcgis/core/symbols/FillSymbol3DLayer.js",
+        "@arcgis/core/symbols/ObjectSymbol3DLayer.js",
+        "@arcgis/core/symbols/PointSymbol3D.js",
+        "@arcgis/core/geometry/Mesh.js",
+        "@arcgis/core/Camera.js",
+        "@arcgis/core/geometry/support/webMercatorUtils.js",
+        "@arcgis/core/geometry/Polyline.js",
+        "@arcgis/core/layers/GraphicsLayer.js",
+        "@arcgis/core/symbols/LineSymbol3D.js",
+        "@arcgis/core/symbols/PathSymbol3DLayer.js",
+      ]);
+
+      // --- Get a reference to the HTML elements ---
+      const viewElement = document.querySelector("arcgis-scene");
+      const cameraModeControl = document.getElementById("camera-mode");
+      const playRateControl = document.getElementById("animation-playrate");
+      const playAnimationButton = document.getElementById("play-animation");
+      const timeSlider = document.querySelector("calcite-slider");
+      const timeInfoEl = document.getElementById("time-info");
+      const altitudeInfoEl = document.getElementById("altitude-info");
+
+      // --- Application State ---
+      let features = [];
+      let animationTarget = null;
+      let initialTransform = null;
+      let isAnimating = false;
+      let previousTimestamp = null;
+
+      // Waiting for the view to load
+      await viewElement.viewOnReady();
+
+      viewElement.environment = {
+        lighting: {
+          directShadowsEnabled: true,
+        },
+      };
+
+      // Creating a point layer with timeInfo attribute
+      const pointLayer = createPointLayer();
+      viewElement.map.add(pointLayer);
+      await pointLayer.when();
+
+      // Query features
+      const queryResult = await pointLayer.queryFeatures();
+      features = queryResult.features;
+
+      // Creating line layer from the points
+      createPathLayer(features);
+
+      // Setting up the time slider
+      setupTimeSlider(pointLayer.timeInfo.fullTimeExtent);
+
+      // Creating the paraglider graphic that will be animated
+      animationTarget = await createParagliderGraphic(features[0].geometry);
+      viewElement.graphics.add(animationTarget);
+
+      // Setting up event listeners
+      setupEventListeners();
+
+      // Start the animation on load
+      startAnimation();
+
+      // --- Initialization Functions ---
+
+      function createPointLayer() {
+        const geoJsonUrl = "https://developers.arcgis.com/javascript/latest/assets/sample-code/scene-follow-mode/track.geojson";
+        return new GeoJSONLayer({
+          url: geoJsonUrl,
+          elevationInfo: { mode: "absolute-height" },
+          timeInfo: { startField: "timedate" },
+          fields: [{ name: "timedate", type: "date" }],
+          renderer: new SimpleRenderer({
+            symbol: new PointSymbol3D({
+              symbolLayers: [
+                new ObjectSymbol3DLayer({
+                  resource: {
+                    primitive: "sphere",
+                  },
+                  height: 2,
+                  width: 2,
+                  depth: 2,
+                  material: {
+                    color: [255, 0, 0, 0.3],
+                  },
+                }),
+              ],
+            }),
+          }),
+        });
+      }
+
+      function createPathLayer(features) {
+        const coords = features.map((f) => [
+          f.geometry.longitude,
+          f.geometry.latitude,
+          f.geometry.z,
+        ]);
+        const pathGraphic = new Graphic({
+          geometry: new Polyline({ paths: [coords], spatialReference: { wkid: 4326 } }),
+          symbol: new LineSymbol3D({
+            symbolLayers: [
+              new PathSymbol3DLayer({
+                profile: "circle",
+                width: 0.5,
+                material: { color: [255, 0, 0, 0.3] },
+                cap: "round",
+              }),
+            ],
+          }),
+        });
+        const graphicsLayer = new GraphicsLayer({ graphics: [pathGraphic] });
+        viewElement.map.add(graphicsLayer);
+      }
+
+      async function createParagliderGraphic(initialPosition) {
+        const modelUrl = "https://developers.arcgis.com/javascript/latest/assets/sample-code/scene-follow-mode/paraglider.glb";
+        const paragliderMesh = await Mesh.createFromGLTF(initialPosition, modelUrl, {
+          vertexSpace: "local",
+        });
+        paragliderMesh.scale(100);
+        paragliderMesh.rotate(0, 0, 180);
+        initialTransform = paragliderMesh.transform?.clone();
+
+        return new Graphic({
+          geometry: paragliderMesh,
+          symbol: new MeshSymbol3D({ symbolLayers: [new FillSymbol3DLayer()] }),
+        });
+      }
+
+      function setupTimeSlider(timeExtent) {
+        timeSlider.min = timeExtent.start.getTime();
+        timeSlider.max = timeExtent.end.getTime();
+        timeSlider.value = timeExtent.start.getTime();
+        timeSlider.ticks = 10000;
+        timeSlider.labelFormatter = (value) => new Date(value).toLocaleTimeString("en-GB");
+      }
+
+      function setupEventListeners() {
+        playAnimationButton.addEventListener("click", toggleAnimation);
+        timeSlider.addEventListener("calciteSliderInput", handleSliderInput);
+        cameraModeControl.addEventListener("calciteSegmentedControlChange", () =>
+          updateScene(timeSlider.value),
+        );
+      }
+
+      // --- Animation and Scene Update Logic ---
+
+      function toggleAnimation() {
+        if (isAnimating) {
+          stopAnimation();
+        } else {
+          startAnimation();
+        }
+      }
+
+      function startAnimation() {
+        if (isAnimating) return;
+        isAnimating = true;
+        playAnimationButton.icon = "pause-f";
+        previousTimestamp = null; // Reset timestamp for the first frame
+        requestAnimationFrame(animationLoop);
+      }
+
+      function stopAnimation() {
+        isAnimating = false;
+        playAnimationButton.icon = "play-f";
+      }
+
+      function animationLoop(timestamp) {
+        if (!isAnimating) return;
+
+        if (previousTimestamp === null) {
+          previousTimestamp = timestamp; // Initialize on the first frame
+        }
+
+        const deltaTime = timestamp - previousTimestamp;
+        previousTimestamp = timestamp;
+
+        let currentTime = timeSlider.value + deltaTime * playRateControl.value;
+
+        if (currentTime >= timeSlider.max) {
+          currentTime = timeSlider.min; // Loop animation
+        }
+
+        timeSlider.value = currentTime;
+        updateScene(currentTime);
+
+        requestAnimationFrame(animationLoop);
+      }
+
+      function handleSliderInput() {
+        stopAnimation();
+        updateScene(timeSlider.value);
+      }
+
+      // This is the core update function, called on every frame and slider change
+      function updateScene(time) {
+        if (features.length === 0) return;
+
+        // Update lighting and visible time extent
+        viewElement.timeExtent = { start: timeSlider.min, end: time };
+        viewElement.environment.lighting.date = time;
+        timeInfoEl.textContent = new Date(time).toLocaleTimeString("en-GB");
+
+        // Finding the closest point in time
+        let index = 1;
+        while (index <= features.length - 1 && time > features[index + 1].attributes.timedate) {
+          index++;
+        }
+
+        // Get surrounding points for interpolation
+        // p0 - previous point, p1 - current point, p2 - next point
+        const p0 = features[index > 0 ? index - 1 : index].geometry;
+        const p1 = features[index].geometry;
+        const p2 = features[index < features.length - 1 ? index + 1 : index].geometry;
+
+        const time1 = features[index].attributes.timedate;
+        const time2 = features[index < features.length - 1 ? index + 1 : index].attributes.timedate;
+
+        // Calculate interpolation factor (t)
+        const t = time2 - time1 === 0 ? 0 : (time - time1) / (time2 - time1);
+
+        // Interpolate position and heading
+        const point = interpolatePoint(p1, p2, t);
+        const heading = calculateHeading(p0, p1, p2, t);
+
+        // Update UI and 3D model
+        altitudeInfoEl.textContent = Math.round(point.z);
+        updateMeshPosition(point, heading);
+
+        // Update camera if not in free mode
+        if (cameraModeControl.value !== "free") {
+          updateCameraPosition(point, heading);
+        }
+      }
+
+      function updateMeshPosition(point, heading) {
+        const paragliderMesh = animationTarget.geometry;
+        paragliderMesh.centerAt(point);
+        paragliderMesh.transform = initialTransform?.clone();
+        paragliderMesh.rotate(0, 0, -heading);
+      }
+
+      function updateCameraPosition(point, heading) {
+        const cameraDirection = cameraModeControl.value === "back" ? -1 : 1;
+        const paragliderOrigin = webMercatorUtils.geographicToWebMercator(point);
+
+        viewElement.camera = new Camera({
+          position: new Point({
+            spatialReference: paragliderOrigin.spatialReference,
+            x: paragliderOrigin.x - cameraDirection * 40 * Math.sin((heading * Math.PI) / 180),
+            y: paragliderOrigin.y - cameraDirection * 40 * Math.cos((heading * Math.PI) / 180),
+            z: paragliderOrigin.z + 10, // Height offset from the model
+          }),
+          heading: heading,
+          tilt: cameraDirection * 80, // Camera tilt angle
+          fov: 105, // Field of view
+        });
+      }
+
+      function interpolatePoint(p1, p2, t) {
+        return new Point({
+          spatialReference: p1.spatialReference,
+          x: lerp(p1.x, p2.x, t),
+          y: lerp(p1.y, p2.y, t),
+          z: lerp(p1.z, p2.z, t),
+        });
+      }
+
+      function calculateHeading(p0, p1, p2, t) {
+        const heading1 = (180 * (Math.PI / 2 - Math.atan2(p1.y - p0.y, p1.x - p0.x))) / Math.PI;
+        const heading2 = (180 * (Math.PI / 2 - Math.atan2(p2.y - p1.y, p2.x - p1.x))) / Math.PI;
+        return lerpAngle(heading1, heading2, t);
+      }
+
+      // Linear interpolation for numbers
+      const lerp = (a, b, t) => a + (b - a) * t;
+
+      // Linear interpolation for angles, handling the 360/0 degree wrap-around
+      const lerpAngle = (a, b, t) => {
+        let delta = b - a;
+        if (delta > 180) b -= 360;
+        else if (delta < -180) b += 360;
+        let result = a + (b - a) * t;
+        return (result + 360) % 360;
+      };
+    </script>
+  </body>
+</html>

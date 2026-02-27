@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Size visual variable themes | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      calcite-label {
+        padding: 10px 7px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-map basemap="gray-vector" center="-83.02, 42.44" scale="543438">
+      <arcgis-popup slot="popup"></arcgis-popup>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <div slot="top-right" id="container-div" style="background: white">
+        <calcite-label layout="inline">
+          Select size theme:
+          <calcite-select id="size-theme-select" scale="m">
+            <calcite-option value="above">above</calcite-option>
+            <calcite-option value="below">below</calcite-option>
+            <calcite-option value="above-and-below" selected>above-and-below</calcite-option>
+          </calcite-select>
+        </calcite-label>
+        <calcite-label layout="inline" id="symbol-style-container">
+          Select symbol style:
+          <calcite-select id="symbol-style-select">
+            <calcite-option value="none">none</calcite-option>
+            <calcite-option value="caret">caret</calcite-option>
+            <calcite-option value="circle-caret">circle-caret</calcite-option>
+            <calcite-option value="arrow">arrow</calcite-option>
+            <calcite-option value="circle-arrow" selected>circle-arrow</calcite-option>
+            <calcite-option value="plus-minus">plus-minus</calcite-option>
+            <calcite-option value="circle-plus-minus">circle-plus-minus</calcite-option>
+            <calcite-option value="square">square</calcite-option>
+            <calcite-option value="circle" selected>circle</calcite-option>
+            <calcite-option value="triangle">triangle</calcite-option>
+          </calcite-select>
+        </calcite-label>
+        <div id="legend-container">
+          <arcgis-legend style="display: none"></arcgis-legend>
+        </div>
+      </div>
+    </arcgis-map>
+
+    <script type="module">
+      const [FeatureLayer, sizeRendererCreator, univariateRendererCreator, reactiveUtils] =
+        await $arcgis.import([
+          "@arcgis/core/layers/FeatureLayer.js",
+          "@arcgis/core/smartMapping/renderers/size.js",
+          "@arcgis/core/smartMapping/renderers/univariateColorSize.js",
+          "@arcgis/core/core/reactiveUtils.js",
+        ]);
+
+      const layer = new FeatureLayer({
+        title: "Census tracts",
+        portalItem: {
+          id: "936481805c2d4639ac727938b32d8ec3",
+        },
+        layerId: 2,
+        minScale: 0,
+        maxScale: 0,
+        opacity: 0.01,
+        outFields: ["TOTHU10", "TOTHU00"],
+      });
+
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.viewOnReady();
+      viewElement.map.add(layer);
+      viewElement.constraints.snapToZoom = false;
+
+      viewElement.view.when(async () => {
+        const layerView = await viewElement.view.whenLayerView(layer);
+        updateLayer(layerView);
+        const legendElement = document.querySelector("arcgis-legend");
+        legendElement.style.display = "block";
+      });
+
+      const themeSelect = document.getElementById("size-theme-select");
+      themeSelect.addEventListener("calciteSelectChange", () => {
+        updateLayer();
+      });
+
+      const symbolSelect = document.getElementById("symbol-style-select");
+      symbolSelect.addEventListener("calciteSelectChange", () => {
+        updateLayer();
+      });
+
+      const symbolStyleContainer = document.getElementById("symbol-style-container");
+
+      // update the layer's renderer each time the user changes a parameter
+      async function updateLayer(layerView) {
+        const theme = themeSelect.value;
+        const symbolStyle = symbolSelect.value;
+        symbolStyleContainer.style.display = theme === "above-and-below" ? "block" : "none";
+
+        const renderer = await createRenderer({ theme, symbolStyle });
+        layer.renderer = renderer;
+        reactiveUtils
+          .whenOnce(() => !layerView?.updating)
+          .then(() => {
+            layer.opacity = 1;
+          });
+      }
+
+      async function createRenderer({ theme, symbolStyle }) {
+        // Update the legend title based on the selected theme
+        const legendTitles = {
+          "above": `Increase in number of households 2000-2010`,
+          "below": `Decline in number of households 2000-2010`,
+          "above-and-below": `Change in number of households 2000-2010`,
+        };
+
+        let params = {
+          layer,
+          view: viewElement.view,
+          theme,
+          valueExpression: `$feature.TOTHU10 - $feature.TOTHU00`,
+          valueExpressionTitle: legendTitles[theme],
+          minValue: -1000,
+          maxValue: 2000,
+          defaultSymbolEnabled: false,
+        };
+
+        if (theme === "above-and-below") {
+          params.symbolOptions = symbolStyle !== "none" ? { symbolStyle } : null;
+          const { renderer } = await univariateRendererCreator.createContinuousRenderer(params);
+          return renderer;
+        } else {
+          const { renderer } = await sizeRendererCreator.createContinuousRenderer(params);
+          return renderer;
+        }
+      }
+    </script>
+  </body>
+</html>

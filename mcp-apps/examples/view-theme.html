@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Color theming for interactive tools | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #centerDiv {
+        display: flex;
+        justify-content: center;
+      }
+
+      #themeSelector {
+        position: absolute;
+        bottom: 25px;
+        max-width: 300px;
+      }
+
+      /* Customize the buttons' colors */
+      .theme-green,
+      .theme-green .esri-ui {
+        --calcite-color-brand: rgb(55, 200, 100);
+        --calcite-color-brand-hover: rgb(0, 150, 50);
+        --calcite-color-brand-press: rgb(0, 100, 0);
+      }
+
+      .theme-pink,
+      .theme-pink .esri-ui {
+        --calcite-color-brand: rgb(255, 0, 155);
+        --calcite-color-brand-hover: rgb(200, 0, 100);
+        --calcite-color-brand-press: rgb(150, 0, 50);
+      }
+    </style>
+  </head>
+
+  <body class="theme-green">
+    <arcgis-scene item-id="d1cb3b6e149c4fe2b0850462cf0fa80d">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <arcgis-direct-line-measurement-3d slot="top-right"></arcgis-direct-line-measurement-3d>
+    </arcgis-scene>
+    <div id="centerDiv">
+      <calcite-segmented-control id="themeSelector" width="full">
+        <calcite-segmented-control-item value="green" checked
+          >Green theme</calcite-segmented-control-item
+        >
+        <calcite-segmented-control-item value="pink">Pink theme</calcite-segmented-control-item>
+      </calcite-segmented-control>
+    </div>
+
+    <script type="module">
+      const [DirectLineMeasurementAnalysis] = await $arcgis.import([
+        "@arcgis/core/analysis/DirectLineMeasurementAnalysis.js",
+      ]);
+
+      // Theme values
+      const themes = {
+        green: {
+          className: "theme-green",
+          accentColor: [55, 200, 100, 0.75],
+          textColor: [55, 200, 100, 1],
+        },
+        pink: {
+          className: "theme-pink",
+          accentColor: [255, 0, 155, 0.75],
+          textColor: [255, 0, 155, 1],
+        },
+      };
+
+      // Get the Scene component
+      const viewElement = document.querySelector("arcgis-scene");
+      // Set the default theme to be green
+      viewElement.theme = {
+        // autocasts as new Theme()
+        accentColor: themes["green"].accentColor,
+        textColor: themes["green"].textColor,
+      };
+
+      await viewElement.viewOnReady();
+      // Create an analysis using 2 points
+      const directLineMeasurementAnalysis = new DirectLineMeasurementAnalysis({
+        startPoint: {
+          spatialReference: {
+            latestWkid: 3857,
+            wkid: 102100,
+          },
+          x: 13524791.756455708,
+          y: 3664204.9533284465,
+          z: 468.78590039536357,
+        },
+        endPoint: {
+          spatialReference: {
+            latestWkid: 3857,
+            wkid: 102100,
+          },
+          x: 13524889.74472405,
+          y: 3663991.688408358,
+          z: 0.7362305875867605,
+        },
+      });
+
+      viewElement.analyses.add(directLineMeasurementAnalysis);
+      const directLine3DMeasurement = document.querySelector("arcgis-direct-line-measurement-3d");
+      // Assign the current analysis to the component
+      await directLine3DMeasurement.componentOnReady();
+      directLine3DMeasurement.analysis = directLineMeasurementAnalysis;
+
+      let themeChoice = "green";
+
+      function toggleTheme() {
+        themeChoice = themeChoice == "green" ? "pink" : "green";
+        const { className, accentColor, textColor } = themes[themeChoice];
+        // Change the CSS class name to toggle colors of UI elements
+        document.body.className = className;
+        // Change the theme colors of the measurement
+        viewElement.theme = {
+          accentColor: accentColor,
+          textColor: textColor,
+        };
+      }
+
+      // Add the UI element to toggle between two theme colors
+      const themeSelector = document.getElementById("themeSelector");
+      themeSelector.addEventListener("calciteSegmentedControlChange", () => {
+        toggleTheme();
+      });
+    </script>
+  </body>
+</html>

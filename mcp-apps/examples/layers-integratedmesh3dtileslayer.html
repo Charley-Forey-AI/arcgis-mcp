@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>IntegratedMesh3DTilesLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-scene item-id="5b177c2579bf45159bb91e2a13b4218b">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <arcgis-expand slot="top-right" group="scene-expands" expand-tooltip="Expand Legend" expanded>
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+      <arcgis-expand slot="top-right" group="scene-expands" expand-tooltip="Expand Layer List">
+        <arcgis-layer-list></arcgis-layer-list>
+      </arcgis-expand>
+    </arcgis-scene>
+
+    <script type="module">
+      const IntegratedMesh3DTilesLayer = await $arcgis.import(
+        "@arcgis/core/layers/IntegratedMesh3DTilesLayer.js",
+      );
+
+      /*************************************
+       * Create IntegratedMesh3DTilesLayer layer
+       * and add it to the webscene
+       ***********************************/
+      const layer = new IntegratedMesh3DTilesLayer({
+        url: "https://tiles.arcgis.com/tiles/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Utrecht_3D_Tiles_Integrated_Mesh/3DTilesServer/tileset.json",
+        title: "Utrecht Integrated Mesh 3D Tiles",
+      });
+
+      /*************************************
+       * Get the reference to the Scene component,
+       * and when ready add layer to the map
+       ***********************************/
+      const viewElement = document.querySelector("arcgis-scene");
+      await viewElement.viewOnReady();
+      viewElement.map.add(layer);
+    </script>
+  </body>
+</html>

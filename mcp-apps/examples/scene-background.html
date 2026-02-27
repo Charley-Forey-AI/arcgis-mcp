@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Custom background for Scene | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background-image:
+          linear-gradient(45deg, #e9e6ef 25%, transparent 25%, transparent 75%, #e9e6ef 75%),
+          linear-gradient(45deg, #e9e6ef 25%, transparent 25%, transparent 75%, #e9e6ef 75%);
+        background-size: 51px 51px;
+        background-position:
+          0 0,
+          25px 25px;
+      }
+
+      #headerDiv {
+        text-align: right;
+        max-width: 420px;
+        padding-right: 20px;
+        color: #61399b;
+        line-height: 1.5em;
+      }
+
+      #backgroundSetting {
+        background-color: #ffffff;
+        box-shadow: 2px 2px 10px rgba(150, 150, 150, 0.6);
+        padding: 10px;
+      }
+      /* make custom checkbox focus visible for keyboard users */
+      calcite-checkbox:focus-visible {
+        outline: 3px solid rgba(97, 57, 155, 0.9);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      This sample shows how to customize the Scene background with alpha compositing enabled.
+    -->
+    <arcgis-scene item-id="9c90786e1a1d4102adf9d53655c2843d" alpha-compositing-enabled>
+      <div id="headerDiv" slot="top-right">
+        <h2>World's biggest cities</h2>
+        <p>
+          <b>Shanghai</b> is the most populated city in the world with 24 million inhabitants,
+          followed by <b>Beijing</b> with 21 million. In third place is the city of
+          <b>Delhi</b> with 16 million people.
+        </p>
+      </div>
+      <div id="backgroundSetting" slot="bottom-left" role="region" aria-label="Background settings">
+        <calcite-checkbox
+          id="backgroundCheckbox"
+          checked
+          label-text="Transparent background"
+          aria-label="Toggle transparent background"
+          title="Toggle transparent background"
+          scale="l"></calcite-checkbox>
+      </div>
+    </arcgis-scene>
+    <script type="module">
+      /* --- References to `Scene` Map Components objects ---
+         `viewElement` is the <arcgis-scene> custom element.
+      */
+      const viewElement = document.querySelector("arcgis-scene");
+      const backgroundCheckbox = document.querySelector("#backgroundCheckbox");
+
+      //Wait for the Map Components element to finish initializing and expose the view
+      await viewElement.viewOnReady();
+
+      viewElement.environment = {
+        background: {
+          type: "color",
+          color: [255, 252, 244, 0],
+        },
+        // Disable stars and atmosphere
+        starsEnabled: false,
+        atmosphereEnabled: false,
+      };
+      // Use virtual lighting mode
+      viewElement.environment.lighting = {
+        type: "virtual",
+      };
+
+      // view constraints limiting min and max zoom altitude
+      viewElement.constraints.altitude = {
+        min: 20000000,
+        max: 25000000,
+      };
+
+      viewElement.padding = { top: 100 };
+
+      // --- UI handler ---
+      function toggleBackgroundTransparent() {
+        const backgroundColor = viewElement.environment.background.color.clone();
+        backgroundColor.a = backgroundCheckbox.checked ? 0 : 1;
+        viewElement.environment.background.color = backgroundColor;
+      }
+
+      backgroundCheckbox.addEventListener("calciteCheckboxChange", toggleBackgroundTransparent);
+    </script>
+  </body>
+</html>

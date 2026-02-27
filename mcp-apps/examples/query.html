@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Query | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #queryDiv {
+        width: 400px;
+      }
+
+      .query {
+        background: dimgray;
+        color: white;
+        padding: 12px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-auto-rows: min-content;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .query h2 {
+        grid-column: 1 / -1;
+        margin: 0 0 4px 0;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      #resultsLine {
+        grid-column: 1 / -1;
+        font-size: 14px;
+        margin-top: 2px;
+        color: var(--calcite-color-text-inverse);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Note: popup-component-enabled enables the Popup component (beta). See https://developers.arcgis.com/javascript/latest/references/map-components/components/arcgis-scene/#popupComponentEnabled for details. -->
+    <arcgis-scene
+      basemap="osm"
+      ground="world-elevation"
+      center="-100,38"
+      zoom="4"
+      popup-component-enabled>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <div id="queryDiv" slot="bottom-left">
+        <div class="query">
+          <h2>Prominent Peaks in the U.S.</h2>
+          <calcite-select id="attSelect" label="Attribute" scale="s">
+            <calcite-option value="ELEV_ft">Elevation</calcite-option>
+            <calcite-option value="PROMINENCE_ft" selected>Prominence</calcite-option>
+          </calcite-select>
+          <calcite-select id="signSelect" label="Operator" scale="s">
+            <calcite-option value="&gt;">is greater than</calcite-option>
+            <calcite-option value="&lt;">is less than</calcite-option>
+            <calcite-option value="=">is equal to</calcite-option>
+          </calcite-select>
+          <calcite-select id="valSelect" label="Value" scale="s">
+            <calcite-option value="1000">1,000 ft</calcite-option>
+            <calcite-option value="5000">5,000 ft</calcite-option>
+            <calcite-option value="10000">10,000 ft</calcite-option>
+            <calcite-option value="15000">15,000 ft</calcite-option>
+            <calcite-option value="20000">20,000 ft</calcite-option>
+          </calcite-select>
+          <calcite-button id="doBtn" appearance="solid" kind="brand" scale="s"
+            >Do Query</calcite-button
+          >
+          <div id="resultsLine">
+            <span id="printResults"></span>
+          </div>
+        </div>
+      </div>
+    </arcgis-scene>
+    <script type="module">
+      const [GraphicsLayer, query, Query, reactiveUtils] = await $arcgis.import([
+        "@arcgis/core/layers/GraphicsLayer.js",
+        "@arcgis/core/rest/query.js",
+        "@arcgis/core/rest/support/Query.js",
+        "@arcgis/core/core/reactiveUtils.js",
+      ]);
+
+      /*****************************************************************
+       * Get a reference to the HTML elements
+       *****************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+
+      // URL to feature service containing points representing the 50
+      // most prominent peaks in the U.S.
+      const peaksUrl =
+        "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Prominent_Peaks_US/FeatureServer/0";
+
+      // Define the popup content for each result
+      const popupTemplate = {
+        // autocasts as new PopupTemplate()
+        title: "{MTN_PEAK}, {STATE}",
+        fieldInfos: [
+          {
+            fieldName: "ELEV_ft",
+            label: "Elevation (feet)",
+            format: {
+              places: 0,
+              digitSeparator: true,
+            },
+          },
+          {
+            fieldName: "ELEV_m",
+            label: "Elevation (meters)",
+            format: {
+              places: 0,
+              digitSeparator: true,
+            },
+          },
+          {
+            fieldName: "PROMINENCE_ft",
+            label: "Prominence (feet)",
+            format: {
+              places: 0,
+              digitSeparator: true,
+            },
+          },
+          {
+            fieldName: "PROMINENCE_m",
+            label: "Prominence (meters)",
+            format: {
+              places: 0,
+              digitSeparator: true,
+            },
+          },
+          {
+            fieldName: "ISOLATION_mi",
+            label: "Isolation (miles)",
+            format: {
+              places: 0,
+              digitSeparator: true,
+            },
+          },
+          {
+            fieldName: "ISOLATION_km",
+            label: "Isolation (km)",
+            format: {
+              places: 0,
+              digitSeparator: true,
+            },
+          },
+        ],
+        content:
+          "<b><a href='https://en.wikipedia.org/wiki/Topographic_prominence'>Prominence:</a>" +
+          "</b> {PROMINENCE_ft} ft ({PROMINENCE_m} m)" +
+          "<br><b>Prominence Rank:</b> {RANK}" +
+          "<br><b>Elevation:</b> {ELEV_ft} ft ({ELEV_m} m)" +
+          "<br><b><a href='https://en.wikipedia.org/wiki/Topographic_isolation'>Isolation:</a>" +
+          "</b> {ISOLATION_mi} mi ({ISOLATION_km} km)",
+      };
+
+      // Create graphics layer and symbol to use for displaying the results of query
+      const resultsLayer = new GraphicsLayer();
+      resultsLayer.title = "Query Results";
+
+      /******************************************************************
+       * Set the query parameters to always return geometry and all fields.
+       * Returning geometry allows us to display results on the map/view
+       ******************************************************************/
+      const params = new Query({
+        returnGeometry: true,
+        outFields: ["*"],
+      });
+
+      // Add the graphic layer to the component's map
+      viewElement.map.add(resultsLayer);
+      viewElement.popupElement.dockEnabled = true;
+      viewElement.popupElement.dockOptions = {
+        breakpoint: false,
+      };
+      viewElement.popupElement.initialDisplayMode = "list";
+
+      document.getElementById("doBtn").addEventListener("click", doQuery);
+
+      const attributeName = document.getElementById("attSelect");
+      const expressionSign = document.getElementById("signSelect");
+      const value = document.getElementById("valSelect");
+
+      // Executes each time the button is clicked
+      function doQuery() {
+        // Clear the results from a previous query and close the popup if its open.
+        resultsLayer.removeAll();
+        if (viewElement.popupElement?.open) {
+          viewElement.closePopup();
+        }
+        /*********************************************
+         *
+         * Set the where clause for the query. This can be any valid SQL expression.
+         * In this case the inputs from the three drop down menus are used to build
+         * the query. For example, if "Elevation", "is greater than", and "10,000 ft"
+         * are selected, then the following SQL where clause is built here:
+         *
+         * params.where = "ELEV_ft > 10000";
+         *
+         * ELEV_ft is the field name for Elevation and is assigned to the value of the
+         * select option in the HTML below. Other operators such as AND, OR, LIKE, etc
+         * may also be used here.
+         *
+         **********************************************/
+        params.where = attributeName.value + expressionSign.value + value.value;
+
+        // executes the query and calls getResults() once the promise is resolved
+        // promiseRejected() is called if the promise is rejected
+        query.executeQueryJSON(peaksUrl, params).then(getResults).catch(promiseRejected);
+      }
+
+      // Called each time the promise is resolved
+      function getResults(response) {
+        // Loop through each of the results and assign a symbol and PopupTemplate
+        // to each so they may be visualized on the map
+        if (response.features && response.features.length > 0) {
+          const peakResults = response.features.map((feature) => {
+            // Sets the symbol of each resulting feature to a cone with a
+            // fixed color and width. The height is based on the mountain's elevation
+            feature.symbol = {
+              type: "point-3d", // autocasts as new PointSymbol3D()
+              symbolLayers: [
+                {
+                  type: "object", // autocasts as new ObjectSymbol3DLayer()
+                  material: {
+                    color: "green",
+                  },
+                  resource: {
+                    primitive: "cone",
+                  },
+                  width: 100000,
+                  height: feature.attributes.ELEV_m * 100,
+                },
+              ],
+            };
+
+            feature.popupTemplate = popupTemplate;
+            return feature;
+          });
+
+          resultsLayer.addMany(peakResults);
+
+          // animate to the results after they are added to the map
+          viewElement
+            .goTo(peakResults)
+            .then(() => {
+              viewElement.openPopup({
+                features: peakResults,
+              });
+            })
+            .catch((error) => {
+              if (error.name != "AbortError") {
+                console.error(error);
+              }
+            });
+        }
+
+        // print the number of results returned to the user
+        document.getElementById("printResults").textContent =
+          response.features.length + " results found";
+      }
+
+      reactiveUtils.watch(
+        () => viewElement.popupElement.features,
+        (features) => {
+          viewElement.popupElement.initialDisplayMode = features.length > 1 ? "list" : "feature";
+          if (features.length > 1) {
+            viewElement.popupElement.selectedFeatureIndex = null;
+          }
+        },
+      );
+
+      // Called each time the promise is rejected
+      function promiseRejected(error) {
+        console.error("Promise rejected: ", error.message);
+      }
+    </script>
+  </body>
+</html>

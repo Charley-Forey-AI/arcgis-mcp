@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Area measurement analysis object | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #info {
+        padding: 1em;
+        max-width: 300px;
+        box-sizing: border-box;
+        color: var(--calcite-color-text-2);
+        background-color: var(--calcite-color-foreground-1);
+        font-size: var(--calcite-font-size);
+        line-height: 1.3em;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="340f87d4f3ef4184b04bcd76261cdf9c">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <div id="info" slot="top-right">
+        Click on a parcel polygon to display its area and perimeter.
+      </div>
+    </arcgis-scene>
+
+    <script type="module">
+      const [AreaMeasurementAnalysis] = await $arcgis.import([
+        "@arcgis/core/analysis/AreaMeasurementAnalysis.js",
+      ]);
+
+      /*****************************************************************
+       * Setup the Scene component and add the CSV layer
+       *****************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+      let hitTestLayers = null;
+
+      await viewElement.viewOnReady(async () => {
+        hitTestLayers = viewElement.map.layers.filter((layer) => layer.title === "Parcels");
+      });
+
+      // create a AreaMeasurement object and add it to the `viewElement.analyses`
+      const areaMeasurementAnalysis = new AreaMeasurementAnalysis();
+      viewElement.analyses.add(areaMeasurementAnalysis);
+
+      viewElement.addEventListener("arcgisViewClick", async (event) => {
+        // remove the current measured geometry from the layer when the user clicks on the map
+        areaMeasurementAnalysis.geometry = null;
+        // get results only from the "Parcels" layer
+        const hitTestResult = await viewElement.hitTest(event.detail, { include: hitTestLayers });
+        if (hitTestResult.results.length === 0) {
+          return;
+        }
+        const geometry = hitTestResult.results[0].graphic.geometry;
+        // pass the polygon geometry to the areaMeasurementAnalysis to display a new measurement
+        areaMeasurementAnalysis.geometry = geometry;
+        // zoom to the selected geometry
+        viewElement.goTo(geometry);
+      });
+    </script>
+  </body>
+</html>

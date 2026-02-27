@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Client-side projection | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <calcite-shell>
+      <arcgis-map scale="166418924" center="0,0">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <calcite-block slot="top-right" expanded id="projectionDiv" heading="Select projection">
+          <calcite-select id="projectWKID">
+            <calcite-option value="8857">Equal Earth Greenwich</calcite-option>
+            <calcite-option value="8858">Equal Earth Americas</calcite-option>
+            <calcite-option value="8859">Equal Earth Asia-Pacific</calcite-option>
+            <calcite-option value="54042">Winkel III</calcite-option>
+            <calcite-option value="54050">World Fuller</calcite-option>
+            <calcite-option value="54010">World Eckert VI</calcite-option>
+            <calcite-option value="54021">World Polyconic</calcite-option>
+            <calcite-option value="54016">World Gall Stereographic</calcite-option>
+            <calcite-option value="54008">World Sinusoidal</calcite-option>
+            <calcite-option value="54023">World Loximuthal</calcite-option>
+            <calcite-option value="54024" selected>World Bonne</calcite-option>
+          </calcite-select>
+          <br />
+          <div id="mapSRDiv"></div>
+          <br />
+        </calcite-block>
+        <arcgis-legend slot="bottom-left" mode="floating"></arcgis-legend>
+      </arcgis-map>
+    </calcite-shell>
+    <script type="module">
+      const [
+        GeoJSONLayer,
+        Graphic,
+        Map,
+        SpatialReference,
+        Polygon,
+        shapePreservingProjectOperator,
+      ] = await $arcgis.import([
+        "@arcgis/core/layers/GeoJSONLayer.js",
+        "@arcgis/core/Graphic.js",
+        "@arcgis/core/Map.js",
+        "@arcgis/core/geometry/SpatialReference.js",
+        "@arcgis/core/geometry/Polygon.js",
+        "@arcgis/core/geometry/operators/shapePreservingProjectOperator",
+      ]);
+
+      // Initial spatial reference wkid
+      const initialWKID = 54024;
+
+      // The polygon to be projected
+      let polygon = new Polygon({
+        rings: [
+          [-641220.67, 6180803.2],
+          [-641220.67, 2371258.15],
+          [-9394330.53, 2371258.15],
+          [-9394330.53, 6180803.2],
+          [-641220.67, 6180803.2],
+        ],
+        spatialReference: SpatialReference.WebMercator,
+      });
+
+      // Create a red line symbol for the polygon
+      const redLineSymbol = {
+        type: "simple-line",
+        color: "red",
+        width: 4,
+      };
+
+      const viewElement = document.querySelector("arcgis-map");
+      const viewSpatialReference = new SpatialReference({
+        wkid: initialWKID,
+      });
+      viewElement.spatialReference = viewSpatialReference;
+
+      // Create a GeoJSONLayer to use as a base layer
+      const countriesLayer = new GeoJSONLayer({
+        title: "Forest area by country",
+        url: "https://developers.arcgis.com/javascript/latest/assets/sample-code/client-projection/percent-forest-area.json",
+        objectIdField: "OBJECTID",
+        fields: [
+          {
+            name: "OBJECTID",
+            alias: "ObjectID",
+            type: "oid",
+          },
+          {
+            name: "Country",
+            alias: "Country",
+            type: "string",
+          },
+          {
+            name: "y2015",
+            alias: "% forest area (2015)",
+            type: "double",
+          },
+        ],
+        popupTemplate: {
+          title: "{Country}",
+          content: "{expression/per-land-area}",
+          expressionInfos: [
+            {
+              title: "per-land-area",
+              name: "per-land-area",
+              expression:
+                "IIF(!IsEmpty($feature.y2015), Round($feature.y2015) + '% of the land area in this country is forest.', 'No data')",
+            },
+          ],
+        },
+        renderer: {
+          type: "class-breaks",
+          defaultLabel: "No data",
+          defaultSymbol: {
+            type: "simple-fill",
+            color: "#fcedcd",
+            outline: {
+              color: [255, 255, 255, 0.1],
+              width: 0.5,
+            },
+          },
+          field: "y2015",
+          legendOptions: {
+            title: " ",
+          },
+          visualVariables: [
+            {
+              type: "color",
+              field: "y2015",
+              stops: [
+                { value: 0, color: "#D0D0CB" },
+                { value: 50, color: "#4F6704" },
+              ],
+            },
+          ],
+        },
+        spatialReference: viewSpatialReference,
+      });
+
+      const drawGraphic = async () => {
+        if (!shapePreservingProjectOperator.isLoaded()) {
+          await shapePreservingProjectOperator.load();
+        }
+
+        // Project the polygon to the map's spatial reference.
+        // Use the shapePreservingProjectOperator to more accurately maintain the shape of the polygon.
+        const projectedPolygon = await shapePreservingProjectOperator.execute(
+          polygon,
+          viewElement.spatialReference,
+        );
+
+        viewElement.graphics.removeAll();
+
+        const polygonGraphic = new Graphic({
+          geometry: projectedPolygon,
+          symbol: redLineSymbol,
+        });
+
+        viewElement.graphics.add(polygonGraphic);
+      };
+
+      // Reproject the map and polygon to the spatial reference selected by the user
+      const wkidSelect = document.getElementById("projectWKID");
+      wkidSelect.addEventListener("calciteSelectChange", () => {
+        viewElement.closePopup();
+        viewElement.spatialReference = new SpatialReference({
+          wkid: Number(wkidSelect.value),
+        });
+
+        document.getElementById("mapSRDiv").innerHTML =
+          `SpatialReference.wkid = <b>${viewElement.spatialReference.wkid}</b>`;
+
+        drawGraphic();
+      });
+
+      const handleMapReady = () => {
+        viewElement.map = new Map({
+          layers: [countriesLayer],
+        });
+
+        viewElement.highlights.forEach((highlightOption) => {
+          if (highlightOption.name === "default") {
+            highlightOption.fillOpacity = 0;
+          }
+        });
+
+        drawGraphic(polygon);
+      };
+
+      if (!viewElement.ready) {
+        viewElement.addEventListener("arcgisViewReadyChange", handleMapReady, {
+          once: true,
+        });
+      } else {
+        handleMapReady();
+      }
+    </script>
+  </body>
+</html>

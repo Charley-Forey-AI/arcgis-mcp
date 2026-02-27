@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Query client-side 3D extents | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #infoLabel {
+        background-color: rgba(255, 255, 255, 0.8);
+        padding: 10px 5px 0px 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-scene item-id="cdb4415be735405ca2f2972ae23a2058">
+      <calcite-label slot="bottom-left" id="infoLabel">
+        Click on a building to zoom to it and get more information.
+      </calcite-label>
+      <arcgis-home slot="top-left"></arcgis-home>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+    </arcgis-scene>
+    <script type="module">
+      const [Query] = await $arcgis.import(["@arcgis/core/rest/support/Query.js"]);
+      // Wait until the Scene component is ready
+      const viewElement = document.querySelector("arcgis-scene");
+      await viewElement.viewOnReady();
+
+      // Retrieve the scene layer from the map - in this case it is the first layer
+      const sceneLayer = viewElement.map.layers.getItemAt(0);
+      sceneLayer.outFields = ["*"];
+
+      // Get the corresponding layer view
+      const sceneLayerView = await viewElement.whenLayerView(sceneLayer);
+
+      // Use hitTest to find if any graphics were clicked
+      viewElement.addEventListener("arcgisViewClick", async (event) => {
+        const response = await viewElement.hitTest(event.detail);
+        const graphic = response.results[0]?.graphic;
+        if (!graphic) return;
+
+        // Create query object: by specifying objectIds, the query will return results only for
+        // the feature matching the graphic's objectid
+        const query = new Query({
+          objectIds: [graphic.attributes.OBJECTID],
+          outFields: ["*"], // return all attributes
+        });
+
+        try {
+          // queryExtent() returns the extent of the feature that satisfies the `query`
+          const result = await sceneLayerView.queryExtent(query);
+          await viewElement.goTo(
+            { target: result.extent.expand(2), tilt: 60 },
+            { duration: 1000, easing: "expo-out" },
+          );
+        } catch (error) {
+          if (error.name !== "AbortError") console.error(error);
+        }
+      });
+    </script>
+  </body>
+</html>

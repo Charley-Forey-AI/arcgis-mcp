@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>VectorTileLayer - update style layers | Sample | ArcGIS Maps SDK for JavaScript</title>
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map center="38.5, 39.8" zoom="2">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <calcite-button slot="top-right" id="layoutButton" width="full">
+        Change font case </calcite-button
+      ><br />
+      <calcite-button slot="top-right" id="paintButton" width="full">
+        Change water color
+      </calcite-button>
+    </arcgis-map>
+
+    <script type="module">
+      const [Map, VectorTileLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/VectorTileLayer.js",
+      ]);
+
+      const viewElement = document.querySelector("arcgis-map");
+      // change the font case for the countries(Admin0 point/large) labels layer
+      document.getElementById("layoutButton").addEventListener("click", () => {
+        // get the layout properties for the Admin0 point/large layer
+        const styleLayer = vtLayer.getStyleLayer("Admin0 point/large");
+
+        // change the text-transform layout property
+        styleLayer.layout["text-transform"] =
+          styleLayer.layout["text-transform"] == "uppercase" ? "none" : "uppercase";
+        vtLayer.setStyleLayer(styleLayer);
+      });
+
+      // change the fill-color for the water(Marine area/1) layer
+      document.getElementById("paintButton").addEventListener("click", () => {
+        // get the paint properties for the marine area/1 layer
+        const paintProperties = vtLayer.getPaintProperties("Marine area/1");
+
+        // change the fill-color paint property for the layer.
+        paintProperties["fill-color"] =
+          paintProperties["fill-color"] == "#93CFC7" ? "#0759C1" : "#93CFC7";
+        vtLayer.setPaintProperties("Marine area/1", paintProperties);
+      });
+      // load a new vector tile layer from JSON object
+      const vtLayer = new VectorTileLayer({
+        style: {
+          layers: [
+            {
+              "layout": {},
+              "paint": {
+                "fill-color": "#F0ECDB",
+              },
+              "source": "esri",
+              "minzoom": 0,
+              "source-layer": "Land",
+              "type": "fill",
+              "id": "Land/0",
+            },
+            {
+              "layout": {},
+              "paint": {
+                "fill-pattern": "Landpattern",
+                "fill-opacity": 0.25,
+              },
+              "source": "esri",
+              "minzoom": 0,
+              "source-layer": "Land",
+              "type": "fill",
+              "id": "Land/1",
+            },
+            {
+              "layout": {},
+              "paint": {
+                "fill-color": "#93CFC7",
+              },
+              "source": "esri",
+              "minzoom": 0,
+              "source-layer": "Marine area",
+              "type": "fill",
+              "id": "Marine area/1",
+            },
+            {
+              "layout": {},
+              "paint": {
+                "fill-pattern": "Marine area",
+                "fill-opacity": 0.08,
+              },
+              "source": "esri",
+              "source-layer": "Marine area",
+              "type": "fill",
+              "id": "Marine area/2",
+            },
+            {
+              "layout": {
+                "line-cap": "round",
+                "line-join": "round",
+              },
+              "paint": {
+                "line-color": "#cccccc",
+                "line-dasharray": [7, 5.33333],
+                "line-width": 1,
+              },
+              "source": "esri",
+              "minzoom": 1,
+              "source-layer": "Boundary line",
+              "type": "line",
+              "id": "Boundary line/Admin0/0",
+            },
+            {
+              "layout": {
+                "text-font": ["Risque Regular"],
+                "text-anchor": "center",
+                "text-field": "{_name_global}",
+              },
+              "paint": {
+                "text-halo-blur": 1,
+                "text-color": "#AF420A",
+                "text-halo-width": 1,
+                "text-halo-color": "#f0efec",
+              },
+              "source": "esri",
+              "source-layer": "Continent",
+              "type": "symbol",
+              "id": "Continent",
+            },
+            {
+              "layout": {
+                "text-font": ["Atomic Age Regular"],
+                "text-field": "{_name}",
+                "text-transform": "none",
+              },
+              "paint": {
+                "text-halo-blur": 1,
+                "text-color": "#AF420A",
+                "text-halo-width": 1,
+                "text-halo-color": "#f0efec",
+              },
+              "source": "esri",
+              "minzoom": 2,
+              "source-layer": "Admin0 point",
+              "maxzoom": 10,
+              "type": "symbol",
+              "id": "Admin0 point/large",
+            },
+          ],
+          glyphs:
+            "https://basemaps.arcgis.com/arcgis/rest/services/World_Basemap_v2/VectorTileServer/resources/fonts/{fontstack}/{range}.pbf",
+          version: 8,
+          sprite:
+            "https://www.arcgis.com/sharing/rest/content/items/7675d44bb1e4428aa2c30a9b68f97822/resources/sprites/sprite",
+          sources: {
+            esri: {
+              url: "https://basemaps.arcgis.com/arcgis/rest/services/World_Basemap_v2/VectorTileServer",
+              type: "vector",
+            },
+          },
+        },
+      });
+      viewElement.map = new Map({
+        layers: [vtLayer],
+      });
+    </script>
+  </body>
+</html>

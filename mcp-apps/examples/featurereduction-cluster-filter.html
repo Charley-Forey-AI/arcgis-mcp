@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+
+    <title>Clustering - generate suggested configuration | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #filter-panel {
+        --calcite-panel-space: 10px;
+        --calcite-panel-background-color: white;
+        max-height: 90vh;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map center="80.20127, 22.12355" zoom="4">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-popup></arcgis-popup>
+      <arcgis-expand slot="top-right" expanded mode="floating">
+        <calcite-panel id="filter-panel" heading="Filter by religion:">
+          <calcite-select
+            id="filter-select"
+            label="Filter by religion"
+            selection-appearance="border"
+            selection-mode="single">
+            <calcite-option label="all" value=""></calcite-option>
+            <calcite-option label="Hindu" value="Hindu"></calcite-option>
+            <calcite-option label="Christian" value="Christian"></calcite-option>
+            <calcite-option label="Muslim" value="Muslim"></calcite-option>
+            <calcite-option label="Buddhist" value="Buddhist"></calcite-option>
+            <calcite-option label="Sikh" value="Sikh"></calcite-option>
+            <calcite-option label="Jain" value="Jain"></calcite-option> </calcite-select
+          ><br />
+          <calcite-button id="toggle-cluster">Disable Clustering</calcite-button>
+          <arcgis-legend></arcgis-legend>
+        </calcite-panel>
+      </arcgis-expand>
+    </arcgis-map>
+
+    <script type="module">
+      const [Map, FeatureLayer, clusterLabelCreator, clusterPopupCreator, reactiveUtils] =
+        await $arcgis.import([
+          "@arcgis/core/Map.js",
+          "@arcgis/core/layers/FeatureLayer.js",
+          "@arcgis/core/smartMapping/labels/clusters.js",
+          "@arcgis/core/smartMapping/popup/clusters.js",
+          "@arcgis/core/core/reactiveUtils.js",
+        ]);
+
+      const viewElement = document.querySelector("arcgis-map");
+
+      const serviceUrl =
+        "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Places_of_Worship_India/FeatureServer/0";
+
+      const layer = new FeatureLayer({
+        url: serviceUrl,
+        title: "Places of worship",
+        outFields: ["name", "religion", "denomination"],
+        popupTemplate: {
+          title: "{name}",
+          content: [
+            {
+              type: "fields",
+              fieldInfos: [
+                {
+                  fieldName: "religion",
+                },
+                {
+                  fieldName: "denomination",
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      const map = new Map({
+        basemap: "gray-vector",
+        layers: [layer],
+      });
+      viewElement.map = map;
+
+      reactiveUtils
+        .whenOnce(() => viewElement.popup.viewModel)
+        .then(() => {
+          // Override the default symbol representing the cluster extent
+          viewElement.popup.viewModel.selectedClusterBoundaryFeature.symbol = {
+            type: "simple-fill",
+            style: "solid",
+            color: "rgba(50,50,50,0.15)",
+            outline: {
+              width: 0.5,
+              color: "rgba(50,50,50,0.25)",
+            },
+          };
+        });
+
+      const layerView = await viewElement.whenLayerView(layer);
+
+      const featureReduction = await generateClusterConfig(layer);
+      layer.featureReduction = featureReduction;
+
+      const toggleButton = document.getElementById("toggle-cluster");
+      // To turn off clustering on a layer, set the
+      // featureReduction property to null
+      toggleButton.addEventListener("click", () => {
+        let fr = layer.featureReduction;
+        layer.featureReduction = fr && fr.type === "cluster" ? null : featureReduction;
+        toggleButton.textContent =
+          toggleButton.textContent === "Enable Clustering"
+            ? "Disable Clustering"
+            : "Enable Clustering";
+      });
+
+      const filterSelect = document.getElementById("filter-select");
+
+      // filters the layer using a definitionExpression
+      // based on a religion selected by the user
+      filterSelect.addEventListener("calciteSelectChange", (event) => {
+        const newValue = event.target.value;
+        const whereClause = newValue ? `religion = '${newValue}'` : null;
+        layerView.filter = {
+          where: whereClause,
+        };
+        // close popup for former cluster that no longer displays
+        viewElement.closePopup();
+      });
+
+      async function generateClusterConfig(layer) {
+        // generates default popupTemplate
+        const popupTemplateResponse = await clusterPopupCreator.getTemplates({ layer });
+        const popupTemplate = popupTemplateResponse.primaryTemplate.value;
+
+        // generates default labelingInfo
+        const labelSchemes = await clusterLabelCreator.getLabelSchemes({
+          layer,
+          view: viewElement.view,
+        });
+        const { labelingInfo, clusterMinSize } = labelSchemes.primaryScheme;
+
+        return {
+          type: "cluster",
+          popupTemplate,
+          labelingInfo,
+          clusterMinSize,
+          maxScale: 50000,
+        };
+      }
+    </script>
+  </body>
+</html>

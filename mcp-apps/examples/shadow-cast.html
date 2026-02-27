@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Shadow Cast component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #selection {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        right: 20px;
+        display: flex;
+        justify-content: center;
+      }
+
+      #scenarioA,
+      #scenarioB {
+        width: 40%;
+        max-width: 300px;
+        margin: 3px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="f2220db76c6448b4be8083d19ef4cf8d">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <arcgis-shadow-cast slot="top-right"> </arcgis-shadow-cast>
+    </arcgis-scene>
+
+    <div id="selection">
+      <calcite-button id="scenarioA" appearance="solid">Scenario A</calcite-button>
+      <calcite-button id="scenarioB" appearance="outline-fill">Scenario B</calcite-button>
+    </div>
+
+    <script type="module">
+      const viewElement = document.querySelector("arcgis-scene");
+      await viewElement.viewOnReady();
+
+      // Configure the component options.
+      const shadowCast = document.querySelector("arcgis-shadow-cast");
+      await shadowCast.componentOnReady();
+      // Create the analysis for a certain date.
+      shadowCast.date = new Date("March 1, 2026");
+      // Customize the threshold analysis that is shown when the app is loaded.
+      shadowCast.thresholdOptions = {
+        // Areas in the shadow for more than 3 hours are colored transparent red.
+        color: [255, 0, 0, 0.4],
+        value: 3 * 3600 * 1000,
+        // Discreet shadow context is shown in dark gray.
+        contextEnabled: true,
+        contextOptions: {
+          color: [30, 30, 30, 0.7],
+        },
+      };
+
+      // Add UI to toggle two scenarios.
+      let scenarioA = null;
+      let scenarioB = null;
+      viewElement.map.allLayers.forEach((layer) => {
+        if (layer.title === "Development Scenario A") {
+          scenarioA = layer;
+        }
+        if (layer.title === "Development Scenario B") {
+          scenarioB = layer;
+        }
+      });
+
+      const buttonA = document.getElementById("scenarioA");
+      const buttonB = document.getElementById("scenarioB");
+      buttonA.addEventListener("click", (event) => {
+        updateScenarios("A");
+      });
+      buttonB.addEventListener("click", (event) => {
+        updateScenarios("B");
+      });
+
+      function updateScenarios(active) {
+        updateScenario(scenarioA, buttonA, active === "A");
+        updateScenario(scenarioB, buttonB, active === "B");
+      }
+
+      function updateScenario(scenario, button, isActive) {
+        scenario.visible = isActive;
+        button.appearance = isActive ? "solid" : "outline-fill";
+      }
+    </script>
+  </body>
+</html>

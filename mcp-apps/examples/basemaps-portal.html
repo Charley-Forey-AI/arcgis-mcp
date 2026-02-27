@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Basemaps with different projections | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #srDiv {
+        height: 40px;
+        padding: 10px;
+        box-sizing: border-box;
+        color: #323232;
+        background-color: #fff;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map item-id="8d91bd39e873417ea21673e0fee87604" center="-100, 35" zoom="2">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <div id="srDiv" slot="top-right"></div>
+      <arcgis-expand slot="top-right">
+        <arcgis-basemap-gallery></arcgis-basemap-gallery>
+      </arcgis-expand>
+    </arcgis-map>
+
+    <script type="module">
+      const [Portal, PortalBasemapsSource] = await $arcgis.import([
+        "@arcgis/core/portal/Portal.js",
+        "@arcgis/core/widgets/BasemapGallery/support/PortalBasemapsSource.js",
+      ]);
+
+      const viewElement = document.querySelector("arcgis-map");
+
+      // get the basemap gallery element
+      const basemapGallery = document.querySelector("arcgis-basemap-gallery");
+      // create a portal instance
+      const portal = new Portal();
+
+      // source for basemaps from a portal group
+      // containing basemaps with different projections
+      const source = new PortalBasemapsSource({
+        portal,
+        query: { id: "bdb9d65e0b5c480c8dcc6916e7f4e099" },
+      });
+      basemapGallery.source = source;
+      const updateSRInfo = () => {
+        if (viewElement.ready) {
+          document.getElementById("srDiv").innerHTML =
+            `map.spatialReference.wkid = <b>${viewElement.spatialReference.wkid}</b>`;
+        }
+      };
+      viewElement.addEventListener("arcgisViewChange", updateSRInfo);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>FlowRenderer with elevation modes | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      arcgis-scene {
+        width: 100%;
+        height: 100%;
+      }
+
+      calcite-card {
+        margin: 10px;
+        width: 300px;
+      }
+
+      calcite-label {
+        display: block;
+        margin-bottom: 1rem;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="40e3825e086b4c9e86d50f7dd2141833">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <arcgis-expand slot="top-right" expand-icon="altitude" expanded>
+        <calcite-card>
+          <calcite-label>
+            Elevation mode
+            <calcite-select id="select-elevation-mode" value="relative-to-ground">
+              <calcite-option value="on-the-ground">On the ground</calcite-option>
+              <calcite-option value="relative-to-ground" selected
+                >Relative to ground</calcite-option
+              >
+              <calcite-option value="absolute-height">Absolute height</calcite-option>
+            </calcite-select>
+          </calcite-label>
+          <calcite-label
+            >Offset (meters above)
+            <calcite-input-number
+              id="input-offset"
+              min="0"
+              step="10"
+              value="60"
+              number-button-type="horizontal"></calcite-input-number>
+          </calcite-label>
+          <calcite-input-message icon="information">
+            Flow streamlines may disappear below the ground surface when using absolute height
+            elevation mode with a small offset.
+          </calcite-input-message>
+        </calcite-card>
+      </arcgis-expand>
+      <calcite-alert icon="information" open auto-close auto-close-duration="slow">
+        <div slot="title">Vertical exaggeration</div>
+        <div slot="message">
+          The visuals in this scene (ground surface and flow elevation offset) are vertically
+          exaggerated to make it easier to see how the terrain surface influences the wind.
+        </div>
+      </calcite-alert>
+    </arcgis-scene>
+
+    <script type="module">
+      (async () => {
+        // Import necessary modules from the ArcGIS API for JavaScript.
+        const [BaseElevationLayer, ImageryTileLayer, ElevationInfo] = await $arcgis.import([
+          "@arcgis/core/layers/BaseElevationLayer.js",
+          "@arcgis/core/layers/ImageryTileLayer.js",
+          "@arcgis/core/symbols/support/ElevationInfo.js",
+        ]);
+
+        /*****************************************************************
+         * Component and view setup
+         *****************************************************************/
+        const viewElement = document.querySelector("arcgis-scene");
+        await viewElement.viewOnReady();
+
+        const verticalExaggeration = 5;
+
+        /*****************************************************************
+         * DOM and variables
+         *****************************************************************/
+        const selectElevationMode = document.getElementById("select-elevation-mode");
+        const inputOffset = document.getElementById("input-offset");
+        let previousMode = selectElevationMode.value;
+
+        /*****************************************************************
+         * Layer Initialization
+         *****************************************************************/
+
+        // Create the imagery layer for displaying global wind data.
+        const windTileLayer = new ImageryTileLayer({
+          url: "https://tiledimageservices.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/HRRR_Wind_IsobaricLevels_Snapshot/ImageServer",
+          renderer: {
+            type: "flow",
+            trailLength: 30,
+            maxPathLength: 60,
+            flowSpeed: 2,
+            trailWidth: 3,
+            color: "white",
+          },
+        });
+
+        updateElevationInfo();
+
+        // Add the wind layer to the scene.
+        viewElement.map.add(windTileLayer);
+
+        /*****************************************************************
+         * Elevation Modes
+         *****************************************************************/
+
+        // Update the layer's elevation mode
+        selectElevationMode.addEventListener("calciteSelectChange", () => {
+          const newMode = selectElevationMode.value;
+          inputOffset.disabled = newMode === "on-the-ground";
+
+          // Force high offset value when transitioning into absolute-height to make the flow visible in the exaggerated scene
+          if (newMode === "absolute-height" && previousMode !== "absolute-height") {
+            inputOffset.value = "6000";
+          }
+
+          previousMode = newMode;
+          updateElevationInfo();
+        });
+
+        // Update the layer's elevation offset
+        inputOffset.addEventListener("calciteInputNumberInput", updateElevationInfo);
+
+        // Updates the elevation info based on the selected mode and offset
+        function updateElevationInfo() {
+          const offset = parseFloat(inputOffset.value);
+
+          const newElevationInfo = new ElevationInfo({
+            mode: selectElevationMode.value,
+            offset: offset * verticalExaggeration,
+          });
+
+          windTileLayer.elevationInfo = newElevationInfo;
+        }
+
+        /*****************************************************************
+         * Custom Exaggerated Elevation Layer
+         *****************************************************************/
+        const ExaggeratedElevationLayer = BaseElevationLayer.createSubclass({
+          properties: {
+            exaggeration: verticalExaggeration,
+            elevation: null,
+          },
+          load: function () {
+            this.addResolvingPromise(this.elevation.load());
+          },
+          fetchTile: function (level, row, col, options) {
+            // Fetch the original elevation tile, then exaggerate it
+            return this.elevation.fetchTile(level, row, col, options).then(
+              function (data) {
+                const exaggeration = this.exaggeration;
+
+                for (let i = 0; i < data.values.length; i++) {
+                  data.values[i] = data.values[i] * exaggeration;
+                }
+                return data;
+              }.bind(this),
+            );
+          },
+        });
+
+        // Apply the custom elevation layer to the scene's ground.
+        const originalGroundLayer = viewElement.ground.layers.at(0);
+
+        viewElement.ground = {
+          layers: [
+            new ExaggeratedElevationLayer({
+              elevation: originalGroundLayer,
+            }),
+          ],
+        };
+      })();
+    </script>
+  </body>
+</html>

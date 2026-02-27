@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Apply effects to features | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map item-id="971eae060595416283eaac4ad54cbbda">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <calcite-panel slot="top-right" id="controls" heading="Explore spatial relationships">
+        <calcite-block expanded label="controls block">
+          <calcite-segmented-control width="full" label-text="Select a layer by geometry type:">
+            <calcite-segmented-control-item
+              id="point-layer-button"
+              icon-start="pin-tear"
+              value="point"
+              title="Select a point layer to see how it is spatially related to one of the predefined geometries"
+              checked>
+            </calcite-segmented-control-item>
+            <calcite-segmented-control-item
+              id="line-layer-button"
+              icon-start="line"
+              value="polyline"
+              title="Select a line layer to see how it is spatially related to one of the predefined geometries"></calcite-segmented-control-item>
+            <calcite-segmented-control-item
+              id="polygon-layer-button"
+              icon-start="polygon"
+              value="polygon"
+              title="Select a polygon layer to see how it is spatially related to one of the predefined geometries"></calcite-segmented-control-item> </calcite-segmented-control
+          ><br />
+
+          <calcite-segmented-control width="full" label-text="Select a predefined geometry:">
+            <calcite-segmented-control-item
+              id="point-geometry-button"
+              icon-start="pin-tear"
+              value="point"
+              title="Filter by point">
+            </calcite-segmented-control-item>
+            <calcite-segmented-control-item
+              id="line-geometry-button"
+              icon-start="line"
+              value="polyline"
+              title="Filter by line"></calcite-segmented-control-item>
+            <calcite-segmented-control-item
+              id="polygon-geometry-button"
+              icon-start="polygon"
+              value="polygon"
+              title="Filter by polygon"></calcite-segmented-control-item> </calcite-segmented-control
+          ><br />
+
+          <calcite-select id="relationship-select" label-text="Spatial relationship:">
+            <calcite-option value="intersects">intersects</calcite-option>
+            <calcite-option value="contains">contains</calcite-option>
+            <calcite-option value="crosses">crosses</calcite-option>
+            <calcite-option value="envelope-intersects">envelope-intersects</calcite-option>
+            <calcite-option value="overlaps">overlaps</calcite-option>
+            <calcite-option value="touches">touches</calcite-option>
+            <calcite-option value="within">within</calcite-option>
+            <calcite-option value="disjoint">disjoint</calcite-option> </calcite-select
+          ><br />
+
+          <calcite-slider
+            id="distance-slider"
+            label-text="Change distance:"
+            value="0"
+            min="0"
+            max="1000"
+            label-handles
+            label-ticks
+            ticks="1000">
+          </calcite-slider>
+
+          <calcite-select id="distance-select" label-text="Distance unit:">
+            <calcite-option value="meters">meters</calcite-option>
+            <calcite-option value="kilometers">kilometers</calcite-option>
+            <calcite-option value="feet">feet</calcite-option>
+            <calcite-option value="miles">miles</calcite-option>
+            <calcite-option value="nautical-miles">nautical-miles</calcite-option> </calcite-select
+          ><br />
+
+          <calcite-button id="clearFilter" type="button" width="full"
+            >Clear all filter</calcite-button
+          >
+        </calcite-block>
+      </calcite-panel>
+    </arcgis-map>
+
+    <script type="module">
+      const [GraphicsLayer, Graphic, geodesicBufferOperator, centroidOperator] =
+        await $arcgis.import([
+          "@arcgis/core/layers/GraphicsLayer.js",
+          "@arcgis/core/Graphic.js",
+          "@arcgis/core/geometry/operators/geodesicBufferOperator.js",
+          "@arcgis/core/geometry/operators/centroidOperator.js",
+        ]);
+
+      let bufferGraphic;
+      let activeLayerView = null;
+      const layerViewsByGeometryType = Object.create(null);
+      const filterGraphicsByGeometryType = Object.create(null);
+
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.viewOnReady();
+
+      const map = viewElement.map;
+      await map.loadAll();
+
+      const bufferGeometriesLayer = new GraphicsLayer();
+
+      // add the graphics layer to the top once webmap loads
+      map.layers.unshift(bufferGeometriesLayer);
+
+      // loop through webmap's operational layers (use for...of so awaits are respected)
+      for (const layer of map.layers.toArray()) {
+        await layer.load();
+        if (layer.type !== "feature") continue;
+
+        const layerView = await viewElement.whenLayerView(layer);
+        layerViewsByGeometryType[layer.geometryType] = layerView;
+
+        // default to points (if present), otherwise first layer
+        if (!activeLayerView || layer.geometryType === "point") {
+          activeLayerView = layerView;
+        }
+      }
+
+      // geometry filter distance UI components
+      const distanceUnitSelect = document.getElementById("distance-select");
+      const spatialRelTypeSelect = document.getElementById("relationship-select");
+      const distanceSlider = document.getElementById("distance-slider");
+
+      //FeatureFilter variables
+      let filterGeometry = null;
+      let geometryRel = spatialRelTypeSelect.value;
+      let distance = 0;
+      let unit = "meters";
+
+      // listen to change and input events on UI components
+      distanceSlider.addEventListener("calciteSliderChange", distanceVariablesChanged);
+      distanceUnitSelect.addEventListener("calciteSelectChange", distanceVariablesChanged);
+      spatialRelTypeSelect.addEventListener("calciteSelectChange", distanceVariablesChanged);
+
+      // get user entered values from distance related options
+      function distanceVariablesChanged() {
+        unit = distanceUnitSelect.value;
+        distance = distanceSlider.value;
+        geometryRel = spatialRelTypeSelect.value;
+        updateBuffer();
+      }
+
+      // update the buffer graphic if user is filtering by distance
+      async function updateBuffer() {
+        if (distance > 0 && filterGeometry) {
+          // Verify that the operator's dependencies are loaded
+          if (!geodesicBufferOperator.isLoaded()) {
+            await geodesicBufferOperator.load();
+          }
+          const newBufferGeometry = geodesicBufferOperator.execute(filterGeometry, distance, {
+            unit: unit,
+          });
+          bufferGeometriesLayer.graphics.getItemAt(0).geometry = newBufferGeometry;
+          updateFilter();
+        } else {
+          bufferGraphic.geometry = null;
+          updateFilter();
+        }
+      }
+
+      // set the geometry filter on the visible FeatureLayerView
+      function updateFilter() {
+        const featureFilter = {
+          geometry: filterGeometry,
+          spatialRelationship: geometryRel,
+          distance,
+          units: unit,
+        };
+        // set effect on excluded features make them gray and transparent
+        if (activeLayerView) {
+          activeLayerView.featureEffect = {
+            filter: featureFilter,
+            excludedEffect: "grayscale(100%) opacity(30%)",
+          };
+        }
+      }
+
+      // click events for the layer type buttons
+      document
+        .getElementById("point-layer-button")
+        .addEventListener("click", layersChangedClickHandler);
+      document
+        .getElementById("line-layer-button")
+        .addEventListener("click", layersChangedClickHandler);
+      document
+        .getElementById("polygon-layer-button")
+        .addEventListener("click", layersChangedClickHandler);
+
+      // Make the selected layer view visible while setting the other layer views invisible
+      function layersChangedClickHandler(event) {
+        for (const key in layerViewsByGeometryType) {
+          layerViewsByGeometryType[key].visible = false;
+        }
+        const geometryType = event.target.value;
+        const layerView = layerViewsByGeometryType[geometryType];
+        if (!layerView) return;
+
+        layerView.visible = true;
+        activeLayerView = layerView;
+        updateBuffer();
+      }
+
+      // geometry buttons - use the selected geometry to set effect
+      const pointGeometryButton = document.getElementById("point-geometry-button");
+      pointGeometryButton.addEventListener("click", geometryButtonsClickHandler);
+      const lineGeometryButton = document.getElementById("line-geometry-button");
+      lineGeometryButton.addEventListener("click", geometryButtonsClickHandler);
+      const polygonGeometryButton = document.getElementById("polygon-geometry-button");
+      polygonGeometryButton.addEventListener("click", geometryButtonsClickHandler);
+
+      function geometryButtonsClickHandler(event) {
+        const geometryType = event.target.value;
+
+        for (const key in filterGraphicsByGeometryType) {
+          filterGraphicsByGeometryType[key].visible = false;
+        }
+        const filterGraphic = filterGraphicsByGeometryType[geometryType];
+        if (!filterGraphic) return;
+        filterGraphic.visible = true;
+        filterGeometry = filterGraphic.geometry;
+
+        updateBuffer();
+      }
+
+      document.getElementById("clearFilter").addEventListener("click", () => {
+        filterGeometry = null;
+        bufferGraphic.geometry = null;
+        pointGeometryButton.checked = false;
+        lineGeometryButton.checked = false;
+        polygonGeometryButton.checked = false;
+        for (const key in filterGraphicsByGeometryType) {
+          filterGraphicsByGeometryType[key].visible = false;
+        }
+        updateFilter();
+      });
+
+      // add predefined point, line and polygon features
+      const polygon = {
+        type: "polygon",
+        rings: [
+          [-19155.858716270788, 6715337.237212951],
+          [4111.45326088908, 6716409.445683937],
+          [4389.731816989901, 6705532.994006807],
+          [-19140.631027042098, 6705304.280086235],
+          [-19155.858716270788, 6715337.237212951],
+        ],
+        spatialReference: viewElement.spatialReference,
+      };
+      const polygonGraphic = new Graphic({
+        geometry: polygon,
+        symbol: {
+          type: "simple-fill", // autocasts as new SimpleFillSymbol()
+          color: [51, 51, 204, 0.4],
+          style: "solid",
+          outline: {
+            color: "white",
+            width: 1,
+          },
+        },
+        visible: false,
+      });
+      filterGraphicsByGeometryType[polygonGraphic.geometry.type] = polygonGraphic;
+
+      const line = {
+        type: "polyline",
+        paths: [
+          [polygonGraphic.geometry.extent.xmin, polygonGraphic.geometry.extent.ymin],
+          [polygonGraphic.geometry.extent.xmax, polygonGraphic.geometry.extent.ymax],
+        ],
+        spatialReference: viewElement.spatialReference,
+      };
+      const lineGraphic = new Graphic({
+        geometry: line,
+        symbol: {
+          type: "simple-line",
+          color: [51, 51, 204, 0.5],
+          width: "4px",
+        },
+        visible: false,
+      });
+      filterGraphicsByGeometryType[lineGraphic.geometry.type] = lineGraphic;
+      const centroid = centroidOperator.execute(polygonGraphic.geometry);
+
+      const point = {
+        type: "point",
+        x: centroid.x,
+        y: centroid.y,
+        spatialReference: viewElement.spatialReference,
+      };
+
+      const pointGraphic = new Graphic({
+        geometry: point,
+        symbol: {
+          type: "text",
+          color: [51, 51, 204, 0.9],
+          text: "\ue61d",
+          font: {
+            size: 24,
+            family: "CalciteWebCoreIcons",
+          },
+        },
+        visible: false,
+      });
+      filterGraphicsByGeometryType[pointGraphic.geometry.type] = pointGraphic;
+
+      bufferGraphic = new Graphic({
+        symbol: {
+          type: "simple-fill",
+          color: [151, 151, 204, 0.5],
+          style: "solid",
+          outline: {
+            color: "white",
+            width: 1,
+          },
+        },
+        visible: true,
+      });
+      bufferGeometriesLayer.addMany([bufferGraphic, polygonGraphic, lineGraphic, pointGraphic]);
+    </script>
+  </body>
+</html>

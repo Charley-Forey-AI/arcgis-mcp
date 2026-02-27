@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Multivariate data exploration | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      calcite-card {
+        text-align: center;
+        padding: 6px;
+        width: 320px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map item-id="b4cfa4a48dbb49b8b150c14bb6cca6f9">
+      <arcgis-popup slot="popup"></arcgis-popup>
+      <arcgis-expand
+        slot="top-left"
+        expand-icon="clear-selection"
+        expand-tooltip="Open size slider"
+        group="top-left">
+        <calcite-card>
+          <h2>Daily traffic volume</h2>
+          <arcgis-slider-size-legacy precision="0"></arcgis-slider-size-legacy>
+        </calcite-card>
+      </arcgis-expand>
+      <arcgis-expand
+        slot="top-left"
+        expand-icon="color-coded-map"
+        expand-tooltip="Open color slider"
+        group="top-left">
+        <calcite-card>
+          <h2>% of truck traffic per day</h2>
+          <arcgis-slider-color-legacy></arcgis-slider-color-legacy>
+        </calcite-card>
+      </arcgis-expand>
+      <arcgis-zoom slot="top-right"></arcgis-zoom>
+      <arcgis-legend slot="bottom-left"></arcgis-legend>
+    </arcgis-map>
+
+    <script type="module">
+      const [histogram, summaryStatistics] = await $arcgis.import([
+        "@arcgis/core/smartMapping/statistics/histogram.js",
+        "@arcgis/core/smartMapping/statistics/summaryStatistics.js",
+      ]);
+
+      const sizeSlider = document.querySelector("arcgis-slider-size-legacy");
+      const colorSlider = document.querySelector("arcgis-slider-color-legacy");
+
+      // The web map must have one layer with a size
+      // and color visual variable set on the renderer
+      // (i.e. a Color + Size visualization)
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.viewOnReady();
+
+      // Retrieve the first map layer and its renderer.
+      const layer = viewElement.map.layers.getItemAt(0);
+      const renderer = layer.renderer;
+
+      const sizeVV = getVisualVariableByType(renderer, "size");
+      const colorVV = getVisualVariableByType(renderer, "color");
+
+      if (!sizeVV || !colorVV) {
+        console.error("Web map layer must have a Color + Size visualization.");
+      }
+
+      const colorHistogram = await getHistogramForVisualVariable(colorVV);
+      const colorHistogramConfig = {
+        bins: colorHistogram.bins,
+        average: getStatsFromVisualVariable(renderer, "color").avg,
+      };
+      createColorSlider(layer);
+
+      const sizeHistogram = await getHistogramForVisualVariable(sizeVV);
+      const sizeStatistics = await getStatsForVisualVariable(sizeVV);
+      const sizeHistogramConfig = {
+        average: sizeStatistics.avg,
+        bins: sizeHistogram.bins,
+        standardDeviation: null,
+      };
+      createSizeSlider(layer, sizeStatistics);
+
+      // Update the size slider configuration
+      // using the renderer already assigned to the layer.
+      function createSizeSlider(layer, statistics) {
+        const renderer = layer.renderer;
+        const { minDataValue, maxDataValue, minSize, maxSize } = getVisualVariableByType(
+          renderer,
+          "size",
+        );
+
+        sizeSlider.histogramConfig = sizeHistogramConfig;
+        sizeSlider.min = statistics.min;
+        sizeSlider.max = statistics.max;
+        sizeSlider.stops = [
+          { size: minSize, value: minDataValue },
+          { size: maxSize, value: maxDataValue },
+        ];
+
+        function changeEventHandler() {
+          const renderer = layer.renderer.clone();
+          const colorVariable = getVisualVariableByType(renderer, "color");
+          const sizeVariable = getVisualVariableByType(renderer, "size");
+          renderer.visualVariables = [colorVariable, sizeSlider.updateVisualVariable(sizeVariable)];
+          layer.renderer = renderer;
+        }
+
+        sizeSlider.addEventListener("arcgisThumbChange", changeEventHandler);
+        sizeSlider.addEventListener("arcgisThumbDrag", changeEventHandler);
+        sizeSlider.addEventListener("arcgisPropertyChange", changeEventHandler);
+      }
+
+      // Update the color slider configuration
+      // using the renderer already assigned to the layer.
+      async function createColorSlider(layer) {
+        const renderer = layer.renderer;
+        const { stops } = getVisualVariableByType(renderer, "color");
+        const stats = getStatsFromVisualVariable(renderer, "color");
+
+        colorSlider.histogramConfig = colorHistogramConfig;
+        colorSlider.min = stats.min;
+        colorSlider.max = stats.max;
+        colorSlider.stops = stops;
+        colorSlider.primaryHandleEnabled = true;
+
+        function changeEventHandler() {
+          const renderer = layer.renderer.clone();
+          const colorVariable = getVisualVariableByType(renderer, "color");
+          const sizeVariable = getVisualVariableByType(renderer, "size");
+          colorVariable.stops = colorSlider.stops;
+          renderer.visualVariables = [colorVariable, sizeVariable];
+          layer.renderer = renderer;
+        }
+
+        colorSlider.addEventListener("arcgisThumbChange", changeEventHandler);
+        colorSlider.addEventListener("arcgisThumbDrag", changeEventHandler);
+        colorSlider.addEventListener("arcgisPropertyChange", changeEventHandler);
+      }
+
+      function getVisualVariableByType(renderer, type) {
+        const visualVariables = renderer.visualVariables;
+        return (
+          visualVariables &&
+          visualVariables.filter((vv) => {
+            return vv.type === type;
+          })[0]
+        );
+      }
+
+      function getStatsFromVisualVariable(renderer, type) {
+        const visualVariable = getVisualVariableByType(renderer, type);
+
+        let avg, stddev;
+        if (type === "color") {
+          avg = visualVariable.stops[2].value;
+          stddev = visualVariable.stops[4].value - avg;
+        }
+
+        const visualVariableAuthInfo = renderer.authoringInfo.visualVariables.filter((vv) => {
+          return vv.type === type;
+        })[0];
+
+        const stats = {
+          avg: avg,
+          stddev: stddev,
+          min: visualVariableAuthInfo.minSliderValue,
+          max: visualVariableAuthInfo.maxSliderValue,
+        };
+        return stats;
+      }
+
+      function getHistogramForVisualVariable(visualVariable) {
+        const params = {
+          layer: viewElement.map.layers.getItemAt(0),
+          field: visualVariable.field,
+          normalizationField: visualVariable.normalizationField,
+          numBins: 30,
+        };
+        return histogram(params);
+      }
+
+      function getStatsForVisualVariable(visualVariable) {
+        const params = {
+          layer: viewElement.map.layers.getItemAt(0),
+          field: visualVariable.field,
+          normalizationField: visualVariable.normalizationField,
+        };
+        return summaryStatistics(params);
+      }
+    </script>
+  </body>
+</html>

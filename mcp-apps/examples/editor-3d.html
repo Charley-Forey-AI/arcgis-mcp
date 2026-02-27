@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Edit features in 3D with the Editor component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="206a6a13162c4d9a95ea6a87abad2437" popup-disabled>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <arcgis-editor slot="top-right"></arcgis-editor>
+    </arcgis-scene>
+    <script type="module">
+      const [FeatureLayer] = await $arcgis.import(["@arcgis/core/layers/FeatureLayer.js"]);
+
+      /*****************************************************************
+       * Get a reference to the HTML elements
+       *****************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+      const editorElement = document.querySelector("arcgis-editor");
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+
+      editorElement.tooltipOptions = { enabled: true };
+      editorElement.labelOptions = { enabled: true };
+
+      // Create a layer with visualVariables to use interactive handles for size and rotation
+      const recreationLayer = new FeatureLayer({
+        title: "Recreation",
+        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/EditableFeatures3D/FeatureServer/1",
+        elevationInfo: {
+          mode: "absolute-height",
+        },
+        renderer: {
+          type: "unique-value", // autocasts as new UniqueValueRenderer()
+          field: "TYPE",
+          visualVariables: [
+            {
+              // size can be modified with the interactive handle
+              type: "size",
+              field: "SIZE",
+              axis: "height",
+              valueUnit: "meters",
+            },
+            {
+              // rotation can be modified with the interactive handle
+              type: "rotation",
+              field: "ROTATION",
+            },
+          ],
+          uniqueValueInfos: [
+            {
+              value: "1",
+              label: "Slide",
+              symbol: {
+                type: "point-3d", // autocasts as new PointSymbol3D()
+                symbolLayers: [
+                  {
+                    type: "object",
+                    resource: {
+                      href: "https://static.arcgis.com/arcgis/styleItems/Recreation/gltf/resource/Slide.glb",
+                    },
+                  },
+                ],
+                styleOrigin: {
+                  styleName: "EsriRecreationStyle",
+                  name: "Slide",
+                },
+              },
+            },
+            {
+              value: "2",
+              label: "Swing",
+              symbol: {
+                type: "point-3d", // autocasts as new PointSymbol3D()
+                symbolLayers: [
+                  {
+                    type: "object",
+                    resource: {
+                      href: "https://static.arcgis.com/arcgis/styleItems/Recreation/gltf/resource/Swing.glb",
+                    },
+                  },
+                ],
+                styleOrigin: {
+                  styleName: "EsriRecreationStyle",
+                  name: "Swing",
+                },
+              },
+            },
+          ],
+        },
+      });
+
+      viewElement.map.add(recreationLayer);
+    </script>
+  </body>
+</html>

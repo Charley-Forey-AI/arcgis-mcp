@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Property changes with reactiveUtils | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      calcite-shell-panel {
+        --calcite-shell-panel-width: 275px;
+      }
+
+      calcite-panel {
+        --calcite-color-text-2: #ffbfc9;
+      }
+
+      calcite-label {
+        --calcite-label-text-color: #e6772e;
+      }
+
+      calcite-label span,
+      calcite-list-item {
+        color: white;
+      }
+    </style>
+  </head>
+
+  <body>
+    <calcite-shell class="calcite-mode-dark">
+      <!-- Note: popup-component-enabled enables the Popup component (beta). See https://developers.arcgis.com/javascript/latest/references/map-components/components/arcgis-map/#popupComponentEnabled for details. -->
+      <arcgis-map item-id="2361e8f3f8114c0fa544090d2ff1cbe6" popup-component-enabled>
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-layer-list slot="top-right"></arcgis-layer-list>
+        <arcgis-expand slot="bottom-left" expand-tooltip="Expand legend">
+          <arcgis-legend></arcgis-legend>
+        </arcgis-expand>
+      </arcgis-map>
+      <calcite-shell-panel slot="panel-end" width="m">
+        <calcite-panel heading="ReactiveUtils Watch Events">
+          <calcite-block
+            expanded
+            heading="Extent Property"
+            description="Compares the new and old extents."
+            collapsible>
+            <calcite-table caption="current extent" scale="s" bordered>
+              <calcite-table-row slot="table-header">
+                <calcite-table-header heading="Current"></calcite-table-header>
+                <calcite-table-header heading="x"></calcite-table-header>
+                <calcite-table-header heading="y"></calcite-table-header>
+              </calcite-table-row>
+              <calcite-table-row slot="table-header">
+                <calcite-table-header heading="min"></calcite-table-header>
+                <calcite-table-cell id="x-min-new"></calcite-table-cell>
+                <calcite-table-cell id="y-min-new"></calcite-table-cell>
+              </calcite-table-row>
+              <calcite-table-row>
+                <calcite-table-header heading="max"></calcite-table-header>
+                <calcite-table-cell id="x-max-new"></calcite-table-cell>
+                <calcite-table-cell id="y-max-new"></calcite-table-cell>
+              </calcite-table-row>
+              <calcite-table-row>
+                <calcite-table-header heading="wkid"></calcite-table-header>
+                <calcite-table-cell id="wkid-new" col-span="2"></calcite-table-cell>
+              </calcite-table-row>
+            </calcite-table>
+            <br />
+            <calcite-table caption="previous extent" scale="s" bordered>
+              <calcite-table-row slot="table-header">
+                <calcite-table-header heading="Previous"></calcite-table-header>
+                <calcite-table-header heading="x"></calcite-table-header>
+                <calcite-table-header heading="y"></calcite-table-header>
+              </calcite-table-row>
+              <calcite-table-row slot="table-header">
+                <calcite-table-header heading="min"></calcite-table-header>
+                <calcite-table-cell id="x-min-old"></calcite-table-cell>
+                <calcite-table-cell id="y-min-old"></calcite-table-cell>
+              </calcite-table-row>
+              <calcite-table-row>
+                <calcite-table-header heading="max"></calcite-table-header>
+                <calcite-table-cell id="x-max-old"></calcite-table-cell>
+                <calcite-table-cell id="y-max-old"></calcite-table-cell>
+              </calcite-table-row>
+              <calcite-table-row>
+                <calcite-table-header heading="wkid"></calcite-table-header>
+                <calcite-table-cell id="wkid-old" col-span="2"></calcite-table-cell>
+              </calcite-table-row>
+            </calcite-table>
+          </calcite-block>
+          <calcite-block expanded heading="Scale Property" collapsible>
+            <calcite-label layout="inline-space-between"
+              >Current Scale<span id="current-scale"></span
+            ></calcite-label>
+          </calcite-block>
+          <calcite-block expanded heading="Popup Visible Property" collapsible>
+            <calcite-label layout="inline-space-between"
+              >Current Popup Visibility<span id="popup-visible"></span
+            ></calcite-label>
+          </calcite-block>
+          <calcite-block expanded heading="Visible Layers Properties" collapsible>
+            <calcite-label id="visible-layers-label"></calcite-label>
+            <calcite-list label="Visible layers" interaction-mode="static" scale="s"></calcite-list>
+          </calcite-block>
+        </calcite-panel>
+      </calcite-shell-panel>
+    </calcite-shell>
+
+    <script type="module">
+      const reactiveUtils = await $arcgis.import("@arcgis/core/core/reactiveUtils.js");
+
+      const viewElement = document.querySelector("arcgis-map");
+      const currentScaleLabel = document.getElementById("current-scale");
+      const popupLabel = document.getElementById("popup-visible");
+      const visibleLayersLabel = document.getElementById("visible-layers-label");
+      const visibleLayersList = document.querySelector("calcite-list");
+      // Reference all of the table cells that will be used to show the extent.
+      const extentCells = {
+        current: {
+          xmin: document.getElementById("x-min-new"),
+          ymin: document.getElementById("y-min-new"),
+          xmax: document.getElementById("x-max-new"),
+          ymax: document.getElementById("y-max-new"),
+          wkid: document.getElementById("wkid-new"),
+        },
+        previous: {
+          xmin: document.getElementById("x-min-old"),
+          ymin: document.getElementById("y-min-old"),
+          xmax: document.getElementById("x-max-old"),
+          ymax: document.getElementById("y-max-old"),
+          wkid: document.getElementById("wkid-old"),
+        },
+      };
+
+      const roundToHundredthsPlace = (value) => (Math.round(value * 100) / 100).toFixed(2);
+
+      const showExtent = (cells, { xmin, ymin, xmax, ymax, spatialReference }) => {
+        cells.xmin.textContent = roundToHundredthsPlace(xmin);
+        cells.ymin.textContent = roundToHundredthsPlace(ymin);
+        cells.xmax.textContent = roundToHundredthsPlace(xmax);
+        cells.ymax.textContent = roundToHundredthsPlace(ymax);
+        cells.wkid.textContent = spatialReference.wkid;
+      };
+
+      await viewElement.viewOnReady();
+
+      // Show the scale and popup property values on the first load.
+      popupLabel.textContent = viewElement.popupElement.open;
+      currentScaleLabel.textContent = roundToHundredthsPlace(viewElement.scale);
+      let oldExtent = viewElement.extent;
+      reactiveUtils.watch(
+        // Track scale, extent, and movement in the view.
+        () => [viewElement.stationary, viewElement.extent, viewElement.scale],
+        ([stationary, extent, scale]) => {
+          // Set the previous extent when the view is not moving.
+          if (stationary) {
+            oldExtent = extent;
+            return;
+          }
+          // Show the last stationary extent when movement resumes.
+          if (oldExtent === extent) showExtent(extentCells.previous, oldExtent);
+          // Show the latest extent and scale while the view moves.
+          showExtent(extentCells.current, extent);
+          currentScaleLabel.textContent = roundToHundredthsPlace(scale);
+        },
+      );
+      reactiveUtils.watch(
+        // Track visibility of the popup.
+        () => viewElement.popupElement.open,
+        (open) => (popupLabel.textContent = open),
+      );
+      reactiveUtils.watch(
+        // Track visibility of layers in the Collection.
+        () => [viewElement.allLayerViews.map((layerView) => layerView.visible)],
+        () => {
+          let layersVisibleText = "All layers are currently visible.";
+          visibleLayersList.textContent = "";
+          viewElement.map.allLayers.forEach((layer) => {
+            if (layer.visible) {
+              const listItem = document.createElement("calcite-list-item");
+              listItem.label = layer.title;
+              visibleLayersList.appendChild(listItem);
+            } else {
+              layersVisibleText = "Not all layers are currently visible.";
+            }
+          });
+          visibleLayersLabel.textContent = layersVisibleText;
+        },
+      );
+    </script>
+  </body>
+</html>

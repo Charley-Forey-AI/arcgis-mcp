@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Filter SceneLayer with FeatureFilter | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #filterCard {
+        background-color: white;
+        font-size: 12px;
+        display: none;
+      }
+
+      .card-content {
+        margin-top: 5px;
+        margin-bottom: 10px;
+      }
+
+      #bufferSlider {
+        width: 90%;
+        margin: 0em auto 0;
+      }
+
+      #clearFilter {
+        margin-top: 10px;
+      }
+
+      arcgis-sketch {
+        border: 0.5px solid #cfcfcf;
+      }
+
+      calcite-segmented-control {
+        --calcite-segmented-control-border-color: #cfcfcf;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="47241277f5c249d6b1c13840192a7cb0">
+      <arcgis-home slot="top-left"></arcgis-home>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+
+      <calcite-card slot="bottom-right" id="filterCard">
+        <div slot="heading">Filter by Geometry</div>
+        <div id="layerSelection" class="card-content">
+          <calcite-label>Select the layers to filter on:</calcite-label>
+          <calcite-label>
+            <calcite-checkbox
+              value="sceneLayerViewFilter"
+              checked
+              label-text="Buildings"></calcite-checkbox>
+          </calcite-label>
+          <calcite-label>
+            <calcite-checkbox
+              value="featureLayerViewFilter"
+              checked
+              label-text="Trees"></calcite-checkbox>
+          </calcite-label>
+        </div>
+        <div id="sketchDiv" class="card-content">
+          <calcite-label>Draw a geometry to filter by:</calcite-label>
+          <arcgis-sketch
+            creation-mode="single"
+            toolbar-kind="docked"
+            hide-create-tools-circle
+            hide-create-tools-multipoint
+            hide-delete-button
+            hide-labels-toggle
+            hide-duplicate-button
+            hide-selection-count-label
+            hide-selection-tools-lasso-selection
+            hide-settings-menu
+            hide-selection-tools-rectangle-selection
+            hide-undo-redo-menu
+            default-graphics-layer-disabled>
+          </arcgis-sketch>
+        </div>
+        <div id="spatialRelationshipDiv" class="card-content">
+          <calcite-label>Spatial relationship:</calcite-label>
+          <calcite-segmented-control>
+            <calcite-segmented-control-item value="disjoint" checked
+              >disjoint</calcite-segmented-control-item
+            >
+            <calcite-segmented-control-item value="intersects"
+              >intersects</calcite-segmented-control-item
+            >
+            <calcite-segmented-control-item value="contains"
+              >contains</calcite-segmented-control-item
+            >
+          </calcite-segmented-control>
+        </div>
+        <div id="bufferDiv" class="card-content">
+          <calcite-label>Set a geometry buffer size:</calcite-label>
+          <calcite-slider
+            id="bufferSlider"
+            min="0"
+            max="1000"
+            step="10"
+            value="0"
+            label-handles
+            label-ticks
+            snap-to-ticks
+            label-text="Buffer [m]"
+            numbering-system="latn">
+          </calcite-slider>
+        </div>
+        <div id="clearDiv" class="card-content">
+          <calcite-button id="clearFilter" width="full">Clear Filter</calcite-button>
+        </div>
+      </calcite-card>
+    </arcgis-scene>
+    <script type="module">
+      const [GraphicsLayer, FeatureFilter, geodesicBufferOperator, Graphic] = await $arcgis.import([
+        "@arcgis/core/layers/GraphicsLayer.js",
+        "@arcgis/core/layers/support/FeatureFilter.js",
+        "@arcgis/core/geometry/operators/geodesicBufferOperator.js",
+        "@arcgis/core/Graphic.js",
+      ]);
+
+      // Get references to the Scene and the Sketch component
+      const viewElement = document.querySelector("arcgis-scene");
+      const sketch = viewElement.querySelector("arcgis-sketch");
+
+      // Define symbol definitions for the sketch geometries
+      const sketchSymbols = {
+        point: {
+          type: "simple-marker",
+          style: "circle",
+          size: 10,
+          color: [255, 255, 255, 0.8],
+          outline: {
+            color: [211, 132, 80, 0.7],
+            size: 6,
+          },
+        },
+        polyline: {
+          type: "simple-line",
+          color: [211, 132, 80, 0.7],
+          width: 6,
+        },
+        polygon: {
+          type: "polygon-3d",
+          symbolLayers: [
+            {
+              type: "fill",
+              material: {
+                color: [255, 255, 255, 0.8],
+              },
+              outline: {
+                color: [211, 132, 80, 0.7],
+                size: 6,
+              },
+            },
+          ],
+        },
+      };
+
+      // Prepare the layers
+      let sceneLayerView = null;
+      let featureLayerView = null;
+      const sketchLayer = new GraphicsLayer({
+        elevationInfo: { mode: "on-the-ground" },
+      });
+      const bufferLayer = new GraphicsLayer({
+        elevationInfo: { mode: "on-the-ground" },
+      });
+
+      // Wait for the view and sketch component to be ready,
+      // add graphics layers for sketch and buffer to the map,
+      // load the geodesicBufferOperator module
+      await viewElement.viewOnReady();
+      await sketch.componentOnReady();
+      await geodesicBufferOperator.load();
+
+      viewElement.map.addMany([bufferLayer, sketchLayer]);
+      document.getElementById("filterCard").style.display = "block";
+
+      // Connect Layer checkboxes to filter logic
+      const featureLayerCheckbox = document.querySelector(
+        'calcite-checkbox[value="featureLayerViewFilter"]',
+      );
+      const sceneLayerCheckbox = document.querySelector(
+        'calcite-checkbox[value="sceneLayerViewFilter"]',
+      );
+      let featureLayerViewFilterSelected = featureLayerCheckbox.checked;
+      let sceneLayerViewFilterSelected = sceneLayerCheckbox.checked;
+
+      // Add event listeners to the layer checkboxes
+      featureLayerCheckbox.addEventListener("calciteCheckboxChange", (event) => {
+        featureLayerViewFilterSelected = event.target.checked;
+        updateFilter();
+      });
+      sceneLayerCheckbox.addEventListener("calciteCheckboxChange", (event) => {
+        sceneLayerViewFilterSelected = event.target.checked;
+        updateFilter();
+      });
+
+      // Prepare sketch layer
+      let sketchGeometry = null;
+      sketch.layer = sketchLayer;
+      sketch.pointSymbol = sketchSymbols.point;
+      sketch.polylineSymbol = sketchSymbols.polyline;
+      sketch.polygonSymbol = sketchSymbols.polygon;
+
+      // For all feature and scene layers create a LayerView to add the filter to
+      for (const layer of viewElement.map.layers) {
+        try {
+          const layerView = await viewElement.view.whenLayerView(layer);
+          if (layer.type === "feature") featureLayerView = layerView;
+          if (layer.type === "scene") sceneLayerView = layerView;
+        } catch (err) {
+          console.error("Error loading layer view:", err);
+        }
+      }
+
+      // Handle sketch events
+      // Listen for geometry creation
+      sketch.addEventListener("arcgisCreate", (event) => {
+        if (event.detail.state === "start") {
+          // Clear previous filter when starting a new sketch
+          clearFilter();
+        }
+        // Only once the geometry is completed
+        if (event.detail.state === "complete") {
+          // event.detail.graphic.geometry contains the drawn geometry
+          sketchGeometry = event.detail.graphic.geometry;
+          updateFilter();
+        }
+      });
+
+      // Listen for geometry update
+      sketch.addEventListener("arcgisUpdate", (event) => {
+        // event.detail.graphics is an array of updated graphics
+        if (event.detail.graphics && event.detail.graphics.length > 0) {
+          sketchGeometry = event.detail.graphics[0].geometry;
+          updateFilter();
+        }
+      });
+
+      // Listen for geometry deletion
+      sketch.addEventListener("arcgisDelete", (event) => {
+        // Clear filter when sketch geometry is deleted
+        clearFilter();
+      });
+
+      // get the selected spatialRelationship from Calcite segmented control
+      const spatialRelationshipControl = document.querySelector("calcite-segmented-control");
+      let selectedFilter = spatialRelationshipControl.querySelector("[checked]").value;
+      spatialRelationshipControl.addEventListener("calciteSegmentedControlChange", (event) => {
+        selectedFilter = event.target.value;
+        updateFilter();
+      });
+
+      // Wire up new Calcite slider for buffer size
+      const bufferSlider = document.querySelector("calcite-slider#bufferSlider");
+      let bufferSize = bufferSlider.value;
+      bufferSlider.addEventListener("calciteSliderInput", (event) => {
+        bufferSize = event.target.value;
+        updateFilter();
+      });
+
+      // Handle Clear filter button click
+      const clearFilterButton = document.querySelector("calcite-button#clearFilter");
+      clearFilterButton.addEventListener("click", clearFilter);
+
+      // Removes all the filters and graphics
+      function clearFilter() {
+        sketchGeometry = null;
+        filterGeometry = null;
+        sketchLayer.removeAll();
+        bufferLayer.removeAll();
+        sceneLayerView.filter = null;
+        featureLayerView.filter = null;
+      }
+
+      // Set the geometry filter on the visible LayerViews
+      function updateFilter() {
+        updateFilterGeometry();
+        const featureFilter = {
+          // autocasts to FeatureFilter
+          geometry: filterGeometry,
+          spatialRelationship: selectedFilter,
+        };
+        if (featureLayerView) {
+          if (featureLayerViewFilterSelected) {
+            featureLayerView.filter = featureFilter;
+          } else {
+            featureLayerView.filter = null;
+          }
+        }
+        if (sceneLayerView) {
+          if (sceneLayerViewFilterSelected) {
+            sceneLayerView.filter = featureFilter;
+          } else {
+            sceneLayerView.filter = null;
+          }
+        }
+      }
+
+      // Update the filter geometry depending on the buffer
+      // If a buffer is set, use the buffered geometry as filter geometry
+      // otherwise use the sketch geometry.
+      let filterGeometry = null;
+      function updateFilterGeometry() {
+        // add a polygon graphic for the bufferSize
+        if (sketchGeometry) {
+          if (bufferSize > 0) {
+            const bufferGeometry = geodesicBufferOperator.execute(sketchGeometry, bufferSize, {
+              unit: "meters",
+            });
+            if (bufferLayer.graphics.length === 0) {
+              bufferLayer.add(
+                new Graphic({
+                  geometry: bufferGeometry,
+                  symbol: sketch.polygonSymbol,
+                }),
+              );
+            } else {
+              bufferLayer.graphics.getItemAt(0).geometry = bufferGeometry;
+            }
+            filterGeometry = bufferGeometry;
+          } else {
+            bufferLayer.removeAll();
+            filterGeometry = sketchGeometry;
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

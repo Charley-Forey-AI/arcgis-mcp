@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>MapImageLayer - dynamic data layer with query table | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      .padding-1 {
+        padding: 1rem;
+      }
+    </style>
+  </head>
+
+  <body>
+    <calcite-shell>
+      <arcgis-map center="-73.8886, 40.8361" zoom="8">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <calcite-panel slot="top-right">
+          <calcite-label class="padding-1">
+            Filter by class:
+            <calcite-select id="layer-select">
+              <calcite-option value="">All</calcite-option>
+              <calcite-option value=" WHERE class = 'city'" selected>City</calcite-option>
+              <calcite-option value=" WHERE class = 'town'">Town</calcite-option>
+              <calcite-option value=" WHERE class = 'CDP'">Census designated place</calcite-option>
+            </calcite-select>
+          </calcite-label>
+        </calcite-panel>
+      </arcgis-map>
+    </calcite-shell>
+    <script type="module">
+      const [Map, MapImageLayer, ClassBreaksRenderer, SimpleMarkerSymbol] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/MapImageLayer.js",
+        "@arcgis/core/renderers/ClassBreaksRenderer.js",
+        "@arcgis/core/symbols/SimpleMarkerSymbol.js",
+      ]);
+
+      // Reference to the Calcite Select element for choosing a filter or query option.
+      const layerSelect = document.getElementById("layer-select");
+
+      // Define a renderer that styles features by population class breaks.
+      const renderer = new ClassBreaksRenderer({
+        field: "population",
+        classBreakInfos: [
+          {
+            minValue: 0,
+            maxValue: 2500,
+            symbol: createSymbol("#f8e3c2", 3),
+          },
+          {
+            minValue: 2500,
+            maxValue: 15000,
+            symbol: createSymbol("#e5998c", 6),
+          },
+          {
+            minValue: 15000,
+            maxValue: 75000,
+            symbol: createSymbol("#d86868", 12),
+          },
+          {
+            minValue: 75000,
+            maxValue: 10000000,
+            symbol: createSymbol("#9b3557", 22),
+          },
+        ],
+      });
+
+      // Base SQL query string for the dynamic data layer.
+      const queryString = "SELECT * FROM ss6.gdb.Places";
+
+      // Create a MapImageLayer with a dynamic data sublayer.
+      // The sublayer uses a SQL query to fetch features from a registered workspace table.
+      // The query can be updated dynamically based on user selection.
+      const layer = new MapImageLayer({
+        url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer",
+        sublayers: [
+          {
+            title: "Places",
+            renderer: renderer,
+            id: 0,
+            source: {
+              // Indicates the source of the sublayer is a dynamic data layer.
+              type: "data-layer",
+              // This object defines the data source of the layer
+              // in this case it's a table that will be queried
+              // using a SQL WHERE clause.
+              dataSource: {
+                type: "query-table",
+                workspaceId: "MyDatabaseWorkspaceIDSSR2",
+                query: queryString + layerSelect.value,
+                spatialReference: { wkid: 4326 },
+                geometryType: "point",
+                oidFields: "objectid",
+              },
+            },
+          },
+        ],
+      });
+
+      // Create a Map instance and add the MapImageLayer.
+      const map = new Map({
+        basemap: "gray-vector",
+        layers: [layer],
+      });
+
+      // Get the map component and assign the map instance.
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.map = map;
+
+      // Wait for the map view to be ready, then call the updatePlacesSublayer function.
+      await viewElement?.viewOnReady();
+      updatePlacesSublayer(layer, layerSelect.value);
+
+      // Listen for changes in the Calcite Select and update the sublayer query accordingly.
+      layerSelect.addEventListener("calciteSelectChange", () => {
+        updatePlacesSublayer(layer, layerSelect.value);
+      });
+
+      // Function to create a simple marker symbol with a given color and size.
+      // Used for rendering features based on their population class.
+      function createSymbol(color, size) {
+        return new SimpleMarkerSymbol({
+          color: color,
+          size: size,
+          outline: {
+            width: 0.5,
+            color: [0, 0, 0, 0.2],
+          },
+        });
+      }
+
+      // Function to update the Places sublayer's SQL query based on user selection.
+      // This function clones the sublayer, updates its query, and reassigns it to the layer.
+      function updatePlacesSublayer(layer, newValue) {
+        // Find the "Places" sublayer
+        const sublayer = layer.sublayers?.find((sublayer) => sublayer.title === "Places");
+        if (!sublayer) return;
+
+        // Clone the sublayer to avoid mutating the original.
+        const updatedSublayer = sublayer.clone();
+        const { dataSource, type } = updatedSublayer.source;
+
+        // Update the query if the source is a data-layer with a dataSource.
+        if (type === "data-layer" && "dataSource" in updatedSublayer.source) {
+          dataSource.query = queryString + newValue;
+        }
+
+        // Replace the sublayers array with the updated sublayer.
+        layer.sublayers = [updatedSublayer];
+      }
+    </script>
+  </body>
+</html>

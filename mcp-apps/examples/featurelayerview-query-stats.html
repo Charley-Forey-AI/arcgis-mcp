@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Client-side statistics and ArcGIS Pie Chart | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <!-- Load Charts components from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/charts-components/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #statsPanel {
+        height: 100%;
+        width: 340px;
+        overflow: auto;
+      }
+
+      #pie-chart {
+        height: 300px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <calcite-shell>
+      <arcgis-map item-id="77efd401c42f4675a6c43c3a464d4b4e" id="map-element">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-popup slot="popup" dock-enabled></arcgis-popup>
+      </arcgis-map>
+      <calcite-block expanded id="statsPanel" slot="panel-end" label="Educational attainment chart">
+        <arcgis-layer-list
+          id="layerListElement"
+          reference-element="map-element"></arcgis-layer-list>
+        <div style="line-height: 1.3; margin-bottom: 20px">
+          <b>Educational attainment</b> refers to the highest level of education that an individual
+          has completed. This chart categorizes the population living within the current view extent
+          by their educational attainment.
+        </div>
+        <arcgis-chart
+          layer-item-id="5d9b6fddedba45d7b86a1e7dbb1bc278"
+          chart-index="0"
+          id="pie-chart"
+          filter-by-extent
+          disable-toggling-legend-items
+          disable-interactions
+          hide-loader-animation></arcgis-chart>
+        <div style="line-height: 1.3">
+          Notice that while one attainment level appears to dominate certain regions, it doesn't
+          necessarily mean it represents the majority of the population. In fact, as you explore
+          most areas, you will find the predominant educational attainment makes up, just a fraction
+          of the population due to the number of categories considered.
+        </div>
+      </calcite-block>
+    </calcite-shell>
+    <script type="module">
+      const { createModel } = await $arcgis.import("@arcgis/charts-components");
+      const [reactiveUtils] = await $arcgis.import(["@arcgis/core/core/reactiveUtils.js"]);
+
+      const viewElement = document.querySelector("arcgis-map");
+
+      // set popup component's dock options
+      const popup = document.querySelector("arcgis-popup");
+      popup.dockOptions = {
+        breakpoint: false,
+      };
+
+      // wait till view is created and ready to be used important to wait
+      // because we need to get an instance of a feature layer from a webmap
+      await viewElement.viewOnReady();
+
+      // helper function for returning a layer instance based on a given layer title
+      function findLayerByTitle(title) {
+        return viewElement.map.allLayers.find((layer) => {
+          return layer.title === title;
+        });
+      }
+
+      // Get the layer from the webmap and set its outFields to EDUCA_BASE.
+      // We need this field on the client calculate total number of residents aged 12+
+      const predominanceLayer = findLayerByTitle("Educational Attainment by City");
+      predominanceLayer.outFields = ["*"];
+
+      // wait for the layer view to be created
+      const layerView = await viewElement.whenLayerView(predominanceLayer);
+
+      // Get reference to the pie chart component and its model and set its view
+      const pieChartElement = document.getElementById("pie-chart");
+      pieChartElement.view = viewElement;
+      const pieChartModel = pieChartElement.model;
+
+      /// Wait until the layerView has finished fetching data for the current extent,
+      // then query sum statistics to get the total number of residents aged 12+
+      reactiveUtils.when(
+        () => !layerView.dataUpdating,
+        async () => {
+          await queryLayerViewStats(layerView);
+        },
+      );
+
+      // Called whenever layerView.dataUpdating becomes false
+      async function queryLayerViewStats(layerView) {
+        const fieldName = "EDUCA_BASE";
+
+        // Set stats definition to get the total number of residents aged 12+
+        // in municipalities visible in the view extent
+        const statDefinition = {
+          onStatisticField: fieldName,
+          outStatisticFieldName: fieldName + "_TOTAL",
+          statisticType: "sum",
+        };
+
+        // Query statistics for features only in view extent
+        const query = layerView.layer.createQuery();
+        query.outStatistics = [statDefinition];
+        query.geometry = viewElement.extent;
+
+        const response = await layerView.queryFeatures(query);
+        const totalCount = response.features?.[0]?.attributes?.EDUCA_BASE_TOTAL || 0;
+        const title = numberWithCommas(totalCount) + " people (age 12+)";
+        // Set the chart title to show total population aged 12+
+        pieChartModel.titleText = title;
+      }
+
+      // helper function for formatting number labels with commas
+      function numberWithCommas(value) {
+        value = value || 0;
+        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      }
+    </script>
+  </body>
+</html>

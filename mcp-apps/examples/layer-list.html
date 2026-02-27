@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>LayerList component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      :root {
+        --calcite-color-text-1: #3c83b7;
+        --calcite-color-text-2: #3c83b7;
+        --calcite-color-text-3: #3c83b7;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="adfad6ee6c6043238ea64e121bb6429a">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <arcgis-layer-list slot="top-right"></arcgis-layer-list>
+    </arcgis-scene>
+  </body>
+</html>

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Generate a relationship visualization | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body class="calcite-mode-dark">
+    <arcgis-scene basemap="gray-vector" ground="world-elevation">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <calcite-card slot="bottom-right">
+        <calcite-label layout="inline">
+          <calcite-checkbox id="descriptiveLabels" checked></calcite-checkbox>
+          Show descriptive labels
+        </calcite-label>
+        <arcgis-legend></arcgis-legend>
+      </calcite-card>
+    </arcgis-scene>
+
+    <script type="module">
+      const [SceneLayer, relationshipRendererCreator] = await $arcgis.import([
+        "@arcgis/core/layers/SceneLayer.js",
+        "@arcgis/core/smartMapping/renderers/relationship.js",
+      ]);
+
+      /*****************************************************************
+       * Get a reference to the HTML elements
+       *****************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+      const showDescriptiveLabelsElement = document.getElementById("descriptiveLabels");
+
+      /*****************************************************************
+       * Setup the Scene component
+       *****************************************************************/
+      viewElement.camera = {
+        position: {
+          spatialReference: { wkid: 3857 },
+          x: -8240095,
+          y: 4968039,
+          z: 398,
+        },
+        heading: 35,
+        tilt: 77,
+      };
+
+      viewElement.popup = {
+        dockEnabled: true,
+        dockOptions: {
+          breakpoint: false,
+        },
+      };
+
+      viewElement.environment = {
+        lighting: {
+          directShadowsEnabled: true,
+        },
+      };
+
+      /*****************************************************************
+       * Create the SceneLayer for NYC energy use
+       *****************************************************************/
+      const layer = new SceneLayer({
+        title: "NYC energy use",
+        portalItem: {
+          id: "e61cfbbbe148472c8e3150da03d8ee13",
+        },
+      });
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+      viewElement.map.add(layer);
+
+      /*****************************************************************
+       * Switches the labels of the legend each time the user checks/unchecks the box
+       *****************************************************************/
+      showDescriptiveLabelsElement.addEventListener("calciteCheckboxChange", (event) => {
+        const renderer = changeRendererLabels(
+          layer.renderer.clone(),
+          showDescriptiveLabelsElement.checked,
+        );
+        applyRenderer(renderer);
+      });
+
+      // Create and apply the relationship renderer
+      await layer.when();
+      const response = await createRelationshipRenderer();
+      const renderer = changeRendererLabels(
+        response.renderer,
+        showDescriptiveLabelsElement.checked,
+      );
+      applyRenderer(renderer);
+
+      /*****************************************************************
+       * Generates a relationship renderer based on the StarScore and ElectricUse fields. StarScore is a numeric score
+       * from 0 - 100, indicating the energy efficiency of a building. The ElectricUse score indicates the amount of
+       * energy used by a building. This function returns a promise which resolves to an object containing the final
+       * renderer.
+       *****************************************************************/
+      function createRelationshipRenderer() {
+        const params = {
+          layer: layer,
+          view: viewElement.view,
+          field1: {
+            field: "StarScore",
+          },
+          field2: {
+            field: "ElectricUse",
+          },
+          focus: "HH",
+          numClasses: 2,
+          edgesType: "solid",
+        };
+        return relationshipRendererCreator.createRenderer(params);
+      }
+
+      // Applies any renderer to the scene layer
+      function applyRenderer(renderer) {
+        renderer.defaultSymbol = {
+          type: "mesh-3d",
+          symbolLayers: [
+            {
+              type: "fill",
+              material: {
+                color: [128, 128, 128, 0.4],
+              },
+              edges: {
+                type: "solid",
+                color: [50, 50, 50],
+              },
+            },
+          ],
+        };
+        renderer.defaultLabel = "No energy score";
+        layer.renderer = renderer;
+      }
+
+      /*****************************************************************
+       * Changes the labels and orientation of the relationship legend.
+       *
+       * @param {module:esri/renderers/UniqueValueRenderer} renderer - An instance of a relationship renderer.
+       * @param {boolean} showDescriptiveLabels - Indicates whether to orient the legend as a diamond and display
+       *   descriptive labels. If `false`, then the legend is oriented as a square with numeric labels, similar to
+       *   a chart with an x/y axis.
+       *
+       * @return {renderer} - The input renderer with the modified descriptions and orientation.
+       *****************************************************************/
+      function changeRendererLabels(renderer, showDescriptiveLabels) {
+        const numClasses = renderer.authoringInfo.numClasses;
+        const field1max = renderer.authoringInfo.field1.classBreakInfos[numClasses - 1].maxValue;
+        const field2max = renderer.authoringInfo.field2.classBreakInfos[numClasses - 1].maxValue;
+
+        renderer.uniqueValueInfos.forEach((info) => {
+          switch (info.value) {
+            case "HH":
+              info.label = showDescriptiveLabels ? "High energy score, High electric use" : "";
+              break;
+            case "HL":
+              info.label = showDescriptiveLabels
+                ? "High energy score, Low electric use"
+                : field1max.toLocaleString();
+              break;
+            case "LH":
+              info.label = showDescriptiveLabels
+                ? "Low energy score, High electric use"
+                : field2max.toLocaleString();
+              break;
+            case "LL":
+              info.label = showDescriptiveLabels ? "Low energy score, Low electric use" : 0;
+              break;
+          }
+        });
+
+        // When a focus is specified, the legend renders as a diamond with the
+        // indicated focus value on the top. If no value is specified, then
+        // the legend renders as a square
+
+        renderer.authoringInfo.focus = showDescriptiveLabels ? "HH" : null;
+        return renderer;
+      }
+    </script>
+  </body>
+</html>

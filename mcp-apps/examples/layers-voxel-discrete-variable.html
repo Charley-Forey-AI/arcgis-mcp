@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>VoxelLayer with discrete variable | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #panelVoxelControl {
+        max-height: calc(100vh - 100px);
+        overflow: auto;
+        width: 270px;
+      }
+
+      .btnColorPicker {
+        border: 1px solid var(--calcite-color-border-1);
+        width: 40px;
+        height: 20px;
+        cursor: pointer;
+      }
+
+      arcgis-legend {
+        width: 200px;
+      }
+
+      calcite-switch {
+        padding-top: 15px;
+        padding-right: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-scene item-id="6c5eeb4e22e748faa660f11f936ab851">
+      <arcgis-zoom slot="top-left"> </arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <calcite-panel
+        id="panelVoxelControl"
+        heading="Most likely lithoclass"
+        style="visibility: hidden"
+        slot="top-right">
+        <div id="existingUniqueValuesList"></div>
+      </calcite-panel>
+      <calcite-color-picker
+        id="colorPicker"
+        clearable
+        channels-disabled
+        saved-disabled
+        scale="s"
+        style="visibility: hidden"></calcite-color-picker>
+      <arcgis-expand slot="bottom-left">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+    </arcgis-scene>
+    <script type="module">
+      // Get references to DOM elements
+      const viewElement = document.querySelector("arcgis-scene");
+      const panelVoxelControl = document.getElementById("panelVoxelControl");
+      const existingUniqueValuesList = document.getElementById("existingUniqueValuesList");
+      const colorPicker = document.getElementById("colorPicker");
+
+      // Wait for the view to fully initialize
+      await viewElement.viewOnReady();
+
+      const voxelLayer = viewElement.map.layers.find((layer) => layer.type === "voxel");
+
+      // Wait for the voxel layer to be in the component's view
+      await viewElement.whenLayerView(voxelLayer);
+      panelVoxelControl.style.visibility = "visible";
+      voxelLayer.popupEnabled = true;
+
+      const currentVariableStyle = voxelLayer.getVariableStyle(null);
+      const uniqueValuesCount = currentVariableStyle.uniqueValues.length;
+      let selectedIndexColor = 0;
+
+      // Creates the DOM elements that updates the properties of a unique value on a VoxelLayer
+      function createUniqueValuesItem(uniqueValueIndex, uniqueValue) {
+        const itemBlock = document.createElement("calcite-block");
+        itemBlock.collapsible = false;
+        itemBlock.expanded = true;
+        itemBlock.heading = uniqueValue.label;
+        itemBlock.label = "item block";
+
+        const itemSwitch = document.createElement("calcite-switch");
+        itemSwitch.checked = uniqueValue.enabled;
+        itemSwitch.slot = "actions-end";
+        itemSwitch.scale = "s";
+
+        itemBlock.appendChild(itemSwitch);
+
+        const itemLabelInput = document.createElement("calcite-label");
+        itemLabelInput.layout = "inline";
+        itemLabelInput.textContent = "Label:";
+        const itemInput = document.createElement("calcite-input");
+        const itemLabelColor = document.createElement("calcite-label");
+        itemLabelColor.layout = "inline";
+        itemLabelColor.textContent = "Color:";
+        const btnColor = document.createElement("button");
+        itemInput.placeholder = "Label";
+        itemInput.value = uniqueValue.label;
+        itemInput.type = "text";
+        itemInput.id = "label_" + uniqueValueIndex.toString();
+        btnColor.classList.add("btnColorPicker");
+        btnColor.id = "btnColor_" + uniqueValueIndex.toString();
+        btnColor.style.background = uniqueValue.color;
+        existingUniqueValuesList.appendChild(itemBlock);
+        itemBlock.appendChild(itemLabelInput);
+        itemBlock.appendChild(itemLabelColor);
+
+        // Updating the label of a unique value
+        itemInput.addEventListener("calciteInputChange", function () {
+          uniqueValue.label = itemInput.value;
+          itemBlock.heading = itemInput.value;
+        });
+
+        // Whether or not to render the unique value.
+        itemSwitch.addEventListener("calciteSwitchChange", function () {
+          uniqueValue.enabled = !uniqueValue.enabled;
+        });
+
+        itemLabelInput.appendChild(itemInput);
+        itemLabelColor.appendChild(btnColor);
+
+        // Show the color picker
+        btnColor.addEventListener("click", function () {
+          const rect = this.getBoundingClientRect();
+          let topValue = rect.bottom;
+          if (rect.bottom + colorPicker.clientHeight >= document.documentElement.clientHeight) {
+            topValue = rect.top - colorPicker.clientHeight;
+          }
+          colorPicker.style = `position:absolute;top:${topValue}px;right:${window.innerWidth - rect.right}px;z-index:999`;
+          colorPicker.value = uniqueValue.color.toHex();
+          selectedIndexColor = uniqueValueIndex;
+        });
+      }
+
+      // Get the unique values of a variable on a VoxelLayer
+      for (let i = 0; i < uniqueValuesCount; i++) {
+        createUniqueValuesItem(i, currentVariableStyle.uniqueValues.getItemAt(i));
+      }
+
+      // Update the color of a unique value
+      colorPicker.addEventListener("calciteColorPickerChange", function (e) {
+        const uniqueValue = currentVariableStyle.uniqueValues.getItemAt(selectedIndexColor);
+        const btnColor = document.getElementById("btnColor_" + selectedIndexColor.toString());
+        btnColor.style.background = colorPicker.value;
+        uniqueValue.color = colorPicker.value;
+      });
+
+      // Listen to a click outside the colorPicker element
+      // close the color picker window
+      document.addEventListener("click", (e) => {
+        if (e.target !== colorPicker && !e.target.classList.contains("btnColorPicker")) {
+          colorPicker.style = "visibility:hidden";
+        }
+      });
+    </script>
+  </body>
+</html>

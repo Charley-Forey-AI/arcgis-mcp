@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Measurement in 2D | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map item-id="990d0191f2574db495c4304a01c3e65b">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-expand
+        slot="top-right"
+        group="top-right"
+        expand-tooltip="Area Measurement"
+        id="area-expand">
+        <arcgis-area-measurement-2d></arcgis-area-measurement-2d>
+      </arcgis-expand>
+      <arcgis-expand
+        slot="top-right"
+        group="top-right"
+        expand-tooltip="Distance Measurement"
+        id="distance-expand">
+        <arcgis-distance-measurement-2d></arcgis-distance-measurement-2d>
+      </arcgis-expand>
+    </arcgis-map>
+    <script type="module">
+      const viewElement = document.querySelector("arcgis-map");
+      const areaMeasurement = document.querySelector("arcgis-area-measurement-2d");
+      const distanceMeasurement = document.querySelector("arcgis-distance-measurement-2d");
+      const areaExpand = document.getElementById("area-expand");
+      const distanceExpand = document.getElementById("distance-expand");
+
+      // Use arcgisPropertyChange to watch the "expanded" attribute on both of the arcgis-expand components.
+      await viewElement.viewOnReady();
+      // When areaExpand is expanded, start the area measurement. If it is closed, clear any measurements.
+      areaExpand.addEventListener("arcgisPropertyChange", (e) => {
+        if (e.detail.name === "expanded") {
+          if (areaExpand.expanded) {
+            areaMeasurement.start();
+          } else {
+            distanceMeasurement.clear();
+            areaMeasurement.clear();
+          }
+        }
+      });
+      // When distanceExpand is expanded, start the distance measurement. If it is closed, clear any measurements.
+      distanceExpand.addEventListener("arcgisPropertyChange", (e) => {
+        if (e.detail.name === "expanded") {
+          if (distanceExpand.expanded) {
+            distanceMeasurement.start();
+          } else {
+            distanceMeasurement.clear();
+            areaMeasurement.clear();
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

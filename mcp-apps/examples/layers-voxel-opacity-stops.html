@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Modify the opacity of a continuous variable | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #panelVoxelControl {
+        max-height: calc(100vh - 100px);
+        overflow: auto;
+        width: 290px;
+        --calcite-panel-background-color: white;
+      }
+
+      calcite-block {
+        --calcite-block-border-color: transparent;
+        margin-bottom: 0;
+        margin-top: 0;
+      }
+
+      .opacityRowColumn {
+        display: grid;
+        grid-template-columns: 1.5fr 1.5fr 0.5fr;
+        gap: 5px;
+      }
+
+      .rowTitle {
+        color: var(--calcite-color-text-1);
+        font-size: var(--calcite-font-size--1);
+        margin-top: 10px;
+      }
+
+      #opacityControl {
+        margin-top: 10px;
+      }
+
+      .customOpacity calcite-icon {
+        cursor: pointer;
+      }
+
+      calcite-icon {
+        margin-top: 5px;
+      }
+
+      arcgis-legend {
+        width: 200px;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-scene item-id="3a922ed0c7a8489ea4fbe8747ac560ba">
+      <arcgis-zoom slot="top-left"> </arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <calcite-panel
+        id="panelVoxelControl"
+        label="Opacity settings"
+        style="visibility: hidden"
+        slot="top-right">
+        <calcite-block label="Current Variable" expanded>
+          <calcite-label
+            >Current Variable:
+            <calcite-select hidden id="selectVariable" label="Current Variable"> </calcite-select>
+          </calcite-label>
+        </calcite-block>
+        <calcite-block label="Transparency settings" expanded>
+          <calcite-label layout="inline">
+            <calcite-checkbox checked></calcite-checkbox>Use Transparency
+          </calcite-label>
+          <div id="opacityControl">
+            <calcite-button id="buttonAddOpacityStop">Add Opacity Stop</calcite-button>
+            <div class="opacityRowColumn rowTitle">
+              <div>Position (%):</div>
+              <div>Value (%):</div>
+              <div></div>
+            </div>
+            <div class="opacityRowColumn">
+              <div>
+                <calcite-input
+                  id="inputPosOpacity_0"
+                  type="number"
+                  read-only
+                  value="0"></calcite-input>
+              </div>
+              <div>
+                <calcite-input id="inputValueOpacity_0" min="0" max="100" type="number" value="0">
+                </calcite-input>
+              </div>
+              <div>
+                <calcite-icon icon="lock"></calcite-icon>
+              </div>
+            </div>
+            <div class="opacityRowColumn">
+              <div>
+                <calcite-input
+                  id="inputPosOpacity_1"
+                  type="number"
+                  read-only
+                  value="100"></calcite-input>
+              </div>
+              <div>
+                <calcite-input id="inputValueOpacity_1" min="0" max="100" type="number" value="10">
+                </calcite-input>
+              </div>
+              <div>
+                <calcite-icon icon="lock"></calcite-icon>
+              </div>
+            </div>
+          </div>
+        </calcite-block>
+      </calcite-panel>
+      <arcgis-expand slot="bottom-left">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+    </arcgis-scene>
+    <script type="module">
+      const VoxelOpacityStop = await $arcgis.import(
+        "@arcgis/core/layers/voxel/VoxelOpacityStop.js",
+      );
+
+      // Get references to DOM elements
+      const viewElement = document.querySelector("arcgis-scene");
+      const panelVoxelControl = document.getElementById("panelVoxelControl");
+      const selectVariable = document.getElementById("selectVariable");
+      const transparencyCheckbox = document.querySelector("calcite-checkbox");
+      const opacityControl = document.getElementById("opacityControl");
+      const buttonAddOpacityStop = document.getElementById("buttonAddOpacityStop");
+      // Get references to the default opacity DOM elements
+      const inputValueOpacity_0 = document.getElementById("inputValueOpacity_0");
+      const inputValueOpacity_1 = document.getElementById("inputValueOpacity_1");
+
+      // Wait for the view to fully initialize
+      await viewElement.viewOnReady();
+
+      const voxelLayer = viewElement.map.layers.find((layer) => layer.type === "voxel");
+
+      // Wait for the voxel layer to be in the component's view
+      await viewElement.whenLayerView(voxelLayer);
+
+      panelVoxelControl.style.visibility = "visible";
+      voxelLayer.popupEnabled = true;
+
+      // Get all variables in a VoxelLayer
+      // display the variables on a dropdown menu
+      for (let i = 0; i < voxelLayer.variables.length; ++i) {
+        const vxlVariable = voxelLayer.variables.getItemAt(i);
+        const item = document.createElement("calcite-option");
+        item.setAttribute("label", voxelLayer.variableStyles.getItemAt(i).label);
+        item.setAttribute("value", vxlVariable.id);
+        if (vxlVariable.id === 11) {
+          item.selected = true;
+          voxelLayer.currentVariableId = vxlVariable.id;
+        }
+        selectVariable.hidden = false;
+        selectVariable.appendChild(item);
+      }
+
+      let currentVariableStyle = voxelLayer.getVariableStyle(null);
+      let transferFunction = currentVariableStyle.transferFunction;
+      let opacityStopsList = [];
+
+      /* Add the default opacity position 0 and 1
+       *  It is required to have position 0 as the first opacityStop and 1 as the last opacityStop.
+       *  The opacityStop's position is a normalized (i.e. 0 to 1) value.
+       *  The opacityStop's value ranges from 0 (transparent) to 1 (opaque)
+       */
+      function addOpacityDefaultValues() {
+        transferFunction.opacityStops.add(
+          new VoxelOpacityStop({
+            opacity: inputValueOpacity_0.value / 100,
+            position: 0,
+          }),
+        );
+        transferFunction.opacityStops.add(
+          new VoxelOpacityStop({
+            opacity: inputValueOpacity_1.value / 100,
+            position: 1,
+          }),
+        );
+        opacityStopsList.push({
+          inputValueId: "inputValueOpacity_0",
+          inputPositionId: "inputPosOpacity_0",
+          position: 0,
+          opacity: 0,
+        });
+        opacityStopsList.push({
+          inputValueId: "inputValueOpacity_1",
+          inputPositionId: "inputPosOpacity_1",
+          position: 1,
+          opacity: 0.1,
+        });
+      }
+
+      function resetOpacityStops() {
+        opacityControl.style.display = "block";
+        transparencyCheckbox.checked = true;
+        transferFunction.opacityStops = [];
+        opacityStopsList = [];
+        addOpacityDefaultValues();
+        const elementsOpacityStops = document.getElementsByClassName("customOpacity");
+        while (elementsOpacityStops.length > 0) {
+          elementsOpacityStops[0].parentNode.removeChild(elementsOpacityStops[0]);
+        }
+        inputValueOpacity_0.value = "0";
+        inputValueOpacity_1.value = "10";
+      }
+
+      resetOpacityStops();
+
+      selectVariable.addEventListener("calciteSelectChange", function () {
+        voxelLayer.currentVariableId = selectVariable.selectedOption.value;
+        currentVariableStyle = voxelLayer.getVariableStyle(null);
+        transferFunction = currentVariableStyle.transferFunction;
+        resetOpacityStops();
+      });
+
+      // Turns on or off the Transparency function
+      transparencyCheckbox.addEventListener("calciteCheckboxChange", function () {
+        opacityControl.style.display = transparencyCheckbox.checked ? "block" : "none";
+        if (transparencyCheckbox.checked) {
+          if (opacityStopsList.length > 0) {
+            for (let i = 0; i < opacityStopsList.length; i++) {
+              transferFunction.opacityStops.add(
+                new VoxelOpacityStop({
+                  opacity: opacityStopsList[i].opacity,
+                  position: opacityStopsList[i].position,
+                }),
+              );
+            }
+          } else {
+            addOpacityDefaultValues();
+          }
+        } else {
+          transferFunction.opacityStops = [];
+        }
+      });
+
+      // Update an opacityStop of a continuous variable
+      function refreshOpacityValues(indexToChange, opacityStop) {
+        let opacityList = [];
+        for (let i = 0; i < transferFunction.opacityStops.length; i++) {
+          if (i === indexToChange) {
+            opacityList.push(opacityStop);
+          } else {
+            opacityList.push(transferFunction.opacityStops.getItemAt(i));
+          }
+        }
+        transferFunction.opacityStops = opacityList;
+      }
+
+      // Position 0 and 1 as a non-editable position but the opacity value can be modified.
+      inputValueOpacity_0.addEventListener("calciteInputChange", function (e) {
+        if (this.value < this.min || this.value > this.max) {
+          e.preventDefault();
+          this.value = (transferFunction.opacityStops.getItemAt(0).opacity * 100).toFixed(1);
+        } else {
+          const opacityStop = new VoxelOpacityStop({
+            opacity: this.value / 100,
+            position: 0,
+          });
+          //opacityStops value are between 0 and 1
+          opacityStopsList[0].opacity = (this.value / 100).toFixed(3);
+          refreshOpacityValues(0, opacityStop);
+        }
+      });
+      inputValueOpacity_1.addEventListener("calciteInputChange", function (e) {
+        const index = opacityStopsList.map((obj) => obj.inputValueId).indexOf(this.id);
+        if (this.value < this.min || this.value > this.max) {
+          e.preventDefault();
+          this.value = (transferFunction.opacityStops.getItemAt(index).opacity * 100).toFixed(1);
+        } else {
+          const opacityStop = new VoxelOpacityStop({
+            opacity: this.value / 100,
+            position: 1,
+          });
+          //opacityStops value are between 0 and 1
+          opacityStopsList[index].opacity = (this.value / 100).toFixed(3);
+          refreshOpacityValues(index, opacityStop);
+        }
+      });
+
+      // Add opacityStop on a continuous variable
+      buttonAddOpacityStop.addEventListener("click", function (e) {
+        const thisOpacityIndex = transferFunction.opacityStops.length - 1;
+        const prevOpacity = transferFunction.opacityStops.getItemAt(thisOpacityIndex - 1);
+        const lastOpacity = transferFunction.opacityStops.getItemAt(thisOpacityIndex);
+        const opacityPosition =
+          (lastOpacity.position - prevOpacity.position) / 2 + prevOpacity.position;
+        // Prevents adding a new opacityStop with the same position as the previous or the next opacityStop
+        if (
+          prevOpacity.position.toFixed(3) === opacityPosition.toFixed(3) ||
+          opacityPosition.toFixed(3) === lastOpacity.position.toFixed(3)
+        ) {
+          e.preventDefault();
+        } else {
+          const opacityStop = new VoxelOpacityStop({
+            opacity: 0.05,
+            position: opacityPosition,
+          });
+          transferFunction.opacityStops.add(opacityStop, thisOpacityIndex);
+          const divItemRow = document.createElement("div");
+          const divPositionCol = document.createElement("div");
+          const divValueCol = document.createElement("div");
+          const divItemDeleteAction = document.createElement("div");
+          const itemPositionInput = document.createElement("calcite-input");
+          const itemValueInput = document.createElement("calcite-input");
+          const itemIcon = document.createElement("calcite-icon");
+          divItemRow.classList.add("opacityRowColumn");
+          divItemRow.classList.add("customOpacity");
+          itemPositionInput.id = `opacityPosition${thisOpacityIndex}_${opacityPosition}_Input`;
+          itemPositionInput.type = "number";
+          itemPositionInput.value = (opacityPosition * 100).toFixed(1).toString();
+          itemValueInput.id = `opacityValue${thisOpacityIndex}_${opacityPosition}_Input`;
+          itemValueInput.type = "number";
+          itemValueInput.value = "5";
+          itemValueInput.min = 0;
+          itemValueInput.max = 100;
+          itemIcon.icon = "trash";
+          opacityControl.insertBefore(divItemRow, opacityControl.lastElementChild);
+          divItemRow.appendChild(divPositionCol);
+          divPositionCol.appendChild(itemPositionInput);
+          divItemRow.appendChild(divValueCol);
+          divValueCol.appendChild(itemValueInput);
+          divItemRow.appendChild(divItemDeleteAction);
+          divItemDeleteAction.appendChild(itemIcon);
+          // Add the new opacityStop before the last index.
+          opacityStopsList.splice(thisOpacityIndex, 0, {
+            inputValueId: itemValueInput.id,
+            inputPositionId: itemPositionInput.id,
+            position: opacityPosition,
+            opacity: 0.05,
+          });
+
+          /* Listen to changes on the opacityStop's position
+           *  only allow updates on the position when the position is not overlapping the previous and the next opacityStop
+           */
+          itemPositionInput.addEventListener("calciteInputChange", function (e) {
+            // A continuous variable can have multiple opacityStops.
+            // If an opacityStop needs to be modified or removed, it is important to always check the index because it can change.
+            // Having a separate array variable that stores all the opacityStops can help to specify which index to use.
+            const index = opacityStopsList.map((obj) => obj.inputPositionId).indexOf(this.id);
+            const prevOpacityStop =
+              index === 0 ? null : transferFunction.opacityStops.getItemAt(index - 1);
+            const nextOpacityStop =
+              index === transferFunction.opacityStops.length - 1
+                ? null
+                : transferFunction.opacityStops.getItemAt(index + 1);
+            const thisOpacity = transferFunction.opacityStops.getItemAt(index);
+            // Prevent an opacityStop from overlapping the previous or next opacityStop.
+            this.min = (prevOpacityStop.position * 100).toFixed(1) + 0.1;
+            this.max = (nextOpacityStop.position * 100).toFixed(1) - 0.1;
+            if (
+              parseFloat(this.value) <= parseFloat((prevOpacityStop.position * 100).toFixed(1)) ||
+              parseFloat(this.value) >= parseFloat((nextOpacityStop.position * 100).toFixed(1))
+            ) {
+              e.preventDefault();
+              this.value = (thisOpacity.position * 100).toFixed(1);
+            } else {
+              const opacityStop = new VoxelOpacityStop({
+                opacity: thisOpacity.opacity,
+                position: this.value / 100,
+              });
+              opacityStopsList[index].position = (this.value / 100).toFixed(3);
+              refreshOpacityValues(index, opacityStop);
+            }
+          });
+          itemValueInput.addEventListener("calciteInputChange", function (e) {
+            const index = opacityStopsList.map((obj) => obj.inputValueId).indexOf(this.id);
+            const thisOpacity = transferFunction.opacityStops.getItemAt(index);
+            if (this.value < this.min || this.value > this.max) {
+              e.preventDefault();
+              this.value = (thisOpacity.opacity * 100).toFixed(1);
+            } else {
+              const opacityStop = new VoxelOpacityStop({
+                opacity: this.value / 100,
+                position: thisOpacity.position,
+              });
+              opacityStopsList[index].opacity = (this.value / 100).toFixed(3);
+              refreshOpacityValues(index, opacityStop);
+            }
+          });
+          divItemDeleteAction.onclick = function () {
+            const index = opacityStopsList
+              .map((obj) => obj.inputPositionId)
+              .indexOf(itemPositionInput.id);
+            transferFunction.opacityStops.removeAt(index);
+            opacityStopsList.splice(index, 1);
+            divItemRow.remove();
+          };
+        }
+      });
+    </script>
+  </body>
+</html>

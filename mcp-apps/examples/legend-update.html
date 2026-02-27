@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+
+    <title>Update legend text | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100vh;
+        margin: 0;
+      }
+
+      calcite-label {
+        margin: 1rem 0 0 1rem;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map id="map" item-id="f0a65cdcf362483fa268a30d62eed4a2">
+      <calcite-panel slot="bottom-left">
+        <calcite-label layout="inline">
+          <calcite-checkbox id="descriptive-label-checkbox" checked></calcite-checkbox>
+          Show descriptive labels
+        </calcite-label>
+        <arcgis-legend></arcgis-legend>
+      </calcite-panel>
+    </arcgis-map>
+
+    <script type="module">
+      const viewElement = document.querySelector("arcgis-map");
+
+      await viewElement.viewOnReady();
+
+      // the only layer in the web map has a relationship renderer, which is visualized
+      // with a diamond shaped legend and descriptive text. When the user checks the
+      // checkbox in the UI, the legend will rotate to display like a square, and
+      // display numbers as labels
+      const layer = viewElement.view.map.layers.getItemAt(0);
+
+      // changing the title of the layer will change the text
+      // describing the layer in the legend widget
+      layer.title = "2012 U.S. presidential election results";
+
+      document
+        .getElementById("descriptive-label-checkbox")
+        .addEventListener("calciteCheckboxChange", (event) => {
+          const checkbox = event.target;
+          if (layer.renderer?.type === "unique-value") {
+            const renderer = changeRendererLabels(layer.renderer.clone(), checkbox.checked);
+            layer.renderer = renderer;
+          }
+        });
+      /**
+       * Changes the labels and orientation of the relationship legend.
+       *
+       * @param {module:esri/renderers/UniqueValueRenderer} renderer - An instance of a relationship renderer.
+       * @param {boolean} showDescriptiveLabels - Indicates whether to orient the legend as a diamond and display
+       *   descriptive labels. If `false`, then the legend is oriented as a square with numeric labels, similar to
+       *   a chart with an x/y axis.
+       *
+       * @return {renderer} - The input renderer with the modified descriptions and orientation.
+       */
+      function changeRendererLabels(renderer, showDescriptiveLabels) {
+        const numClasses = renderer.authoringInfo?.numClasses ?? 0;
+        const field1max =
+          renderer.authoringInfo?.field1?.classBreakInfos?.[numClasses - 1]?.maxValue ?? 0;
+        const field2max =
+          renderer.authoringInfo?.field2?.classBreakInfos?.[numClasses - 1]?.maxValue ?? 0;
+
+        renderer.uniqueValueInfos?.forEach((info) => {
+          switch (info.value) {
+            case "HH":
+              info.label = showDescriptiveLabels ? "Majority voted for challenger; fewer jobs" : "";
+              break;
+            case "HL":
+              info.label = showDescriptiveLabels
+                ? "Majority voted for challenger; more jobs"
+                : Math.round(field1max) + "%";
+              break;
+            case "LH":
+              info.label = showDescriptiveLabels
+                ? "Majority voted for incumbent; fewer jobs"
+                : Math.round(field2max) + "%";
+              break;
+            case "LL":
+              info.label = showDescriptiveLabels ? "Majority voted for incumbent; more jobs" : "0";
+              break;
+          }
+        });
+
+        // When a focus is specified, the legend renders as a diamond with the
+        // indicated focus value on the top. If no value is specified, then
+        // the legend renders as a square
+        if (renderer.authoringInfo) {
+          renderer.authoringInfo.focus = showDescriptiveLabels ? "HH" : null;
+        }
+
+        return renderer;
+      }
+    </script>
+  </body>
+</html>

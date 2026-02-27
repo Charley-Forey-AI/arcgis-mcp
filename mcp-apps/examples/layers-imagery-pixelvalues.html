@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>ImageryLayer - client side pixel filter | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      calcite-label {
+        background-color: white;
+        padding: 20px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map basemap="dark-gray-vector" center="-32, 28" zoom="2">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-popup slot="popup" highlight-disabled include-default-actions-disabled></arcgis-popup>
+      <calcite-label slot="bottom-left">
+        <b>Sea Surface Temperature on April 7, 2014</b>
+        <calcite-slider label-handles label-ticks max="37" min="-3" ticks="100"></calcite-slider>
+      </calcite-label>
+    </arcgis-map>
+
+    <script type="module">
+      const [DimensionalDefinition, ImageryLayer, MosaicRule, reactiveUtils] = await $arcgis.import(
+        [
+          "@arcgis/core/layers/support/DimensionalDefinition.js",
+          "@arcgis/core/layers/ImageryLayer.js",
+          "@arcgis/core/layers/support/MosaicRule.js",
+          "@arcgis/core/core/reactiveUtils.js",
+        ],
+      );
+
+      const viewElement = document.querySelector("arcgis-map");
+      const slider = document.querySelector("calcite-slider");
+      await viewElement.componentOnReady(); // Wait for the property methods to be ready.
+
+      const url =
+        "https://sampleserver6.arcgisonline.com/arcgis/rest/services/ScientificData/SeaTemperature/ImageServer";
+      const title = "Sea Surface Temperature";
+      const rangeDescriptionText = "Currently displaying locations with sea temperatures from";
+      const defaultContent =
+        "Click anywhere in the oceans to view the sea temperature at that location.";
+      const [depth, time] = [[0], [1396828800000]]; // 0 ft. deep, 2014 April 7
+
+      let [minDesiredTemp, maxDesiredTemp] = [-3, 37];
+      // Convert the single temperature band into three color bands (red, green, and blue).
+      const pixelFilter = (pixelData) => {
+        if (!(pixelData && pixelData.pixelBlock && pixelData.pixelBlock.pixels)) return;
+
+        const { height, width, pixels } = pixelData.pixelBlock;
+        const { minValue, maxValue } = pixelData.pixelBlock.statistics[0];
+        const [red, green, blue] = [[], [], []];
+        const mask = []; // Store each pixel as valid (1) or invalid (0).
+
+        // Scale red/blue values based on the pixel block's data range.
+        const scaleFactor = 255.0 / (maxValue - minValue);
+        const pixelsInPixelBlock = width * height;
+
+        for (let i = 0; i < pixelsInPixelBlock; i++) {
+          const temperature = pixels[0][i]; // Derive this from the current single band.
+          const tempInRange = minDesiredTemp <= temperature && temperature <= maxDesiredTemp;
+
+          const scaledRed = tempInRange ? (temperature - minValue) * scaleFactor : 0;
+          const scaledBlue = tempInRange ? 255 - scaledRed : 0;
+          [red[i], green[i], blue[i]] = [scaledRed, 0, scaledBlue]; // Set the RGB channels.
+          mask[i] = tempInRange ? 1 : 0; // Show pixel if its related temperature is in range.
+        }
+
+        pixelData.pixelBlock.pixels = [red, green, blue]; // Replace single band with RGB bands.
+        pixelData.pixelBlock.statistics = null; // Reset statistics.
+        pixelData.pixelBlock.pixelType = "u8"; // Use unsigned 8-bit for color.
+      };
+      const createDimDef = (dimensionName, values) => {
+        // Define a single-value slice for the given dimension.
+        return new DimensionalDefinition({ dimensionName, values, isSlice: true });
+      };
+
+      // Create a mosaic rule to filter imagery by depth and time.
+      const mosaicRule = new MosaicRule({
+        multidimensionalDefinition: [createDimDef("StdZ", depth), createDimDef("StdTime", time)],
+      });
+
+      // Display temperature at the clicked location.
+      const popupTemplate = { title, content: "{Raster.ServicePixelValue}° Celsius" };
+
+      const layer = new ImageryLayer({ url, mosaicRule, popupTemplate, pixelFilter });
+      viewElement.map.add(layer); // Add the sea temperature layer to the map.
+      const layerView = await viewElement.whenLayerView(layer);
+
+      // Wait until the layer fully displays for the first time.
+      await reactiveUtils.whenOnce(() => !layerView.updating);
+      // Show the instructional popup.
+      viewElement.openPopup({ title, content: defaultContent, location: viewElement.center });
+
+      // Update temperature range and redraw imagery layer.
+      const updatePixelFilter = (min = minDesiredTemp, max = maxDesiredTemp) => {
+        [minDesiredTemp, maxDesiredTemp] = [min, max];
+        slider.labelText = `${rangeDescriptionText} ${min} °C to ${max} °C.`;
+        layer.redraw();
+      };
+
+      updatePixelFilter(); // Set initial temperature range and draw the layer.
+      slider.value = [minDesiredTemp, maxDesiredTemp]; // Set initial slider range.
+
+      slider.addEventListener("calciteSliderInput", () => {
+        const [min, max] = slider.value;
+        updatePixelFilter(min, max); // Update pixels/label with new temp range.
+      });
+    </script>
+  </body>
+</html>

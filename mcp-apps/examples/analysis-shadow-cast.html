@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Shadow cast analysis object | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      .ui-panel {
+        width: 300px;
+      }
+
+      .content-container {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .measurement-vals {
+        font-weight: 500;
+      }
+
+      calcite-panel {
+        --calcite-panel-corner-radius: 15px;
+      }
+
+      calcite-block {
+        margin-block-end: 0;
+      }
+
+      #total-shadow.building-ok {
+        --calcite-chip-background-color: rgba(140, 226, 170, 1);
+        --calcite-chip-border-color: rgba(140, 226, 170, 1);
+      }
+
+      #total-shadow.building-bad {
+        --calcite-chip-background-color: rgba(247, 157, 157, 1);
+        --calcite-chip-border-color: rgba(247, 157, 157, 1);
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="048e559e953242aeac46a7c78ccd2ff0" popup-disabled>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <calcite-panel
+        slot="bottom-right"
+        class="ui-panel"
+        expanded
+        id="project-panel"
+        label="Project panel"
+        loading>
+        <div class="content-container">
+          <calcite-block
+            expanded
+            label="building"
+            heading="Building properties"
+            description="Tweak values to control shadow impact"
+            scale="m"
+            icon-start="3d-building-parameter">
+            <calcite-slider
+              id="floors-slider"
+              value="15"
+              label-handles
+              label-ticks
+              max="25"
+              min="1"
+              snap
+              step="1"
+              label-text="Number of floors">
+            </calcite-slider>
+
+            <calcite-slider
+              id="width"
+              value="60"
+              label-handles
+              label-ticks
+              max="85"
+              min="12"
+              snap
+              step="1"
+              label-text="Width (m)">
+            </calcite-slider>
+
+            <calcite-slider
+              id="side-shift-slider"
+              value="0"
+              label-handles
+              label-ticks
+              max="25"
+              min="-25"
+              snap
+              step="1"
+              label-text="Position shift (m)">
+            </calcite-slider>
+          </calcite-block>
+
+          <calcite-block
+            label="measurements"
+            id="block-measurements"
+            expanded
+            heading="Shadow effects"
+            description="Keep the time in shadow for all the buildings less than 30 hours."
+            icon-start="measure-building-height-shadow">
+            <calcite-label alignment="start" class="measurement-vals" layout="inline-space-between"
+              >Total time in shadow
+              <calcite-chip id="total-shadow" scale="m" kind="neutral">—</calcite-chip>
+            </calcite-label>
+          </calcite-block>
+        </div>
+      </calcite-panel>
+    </arcgis-scene>
+
+    <script type="module">
+      const [
+        FillSymbol3DLayer,
+        Graphic,
+        GraphicsLayer,
+        LineCallout3D,
+        meshUtils,
+        Mesh,
+        Point,
+        MeshSymbol3D,
+        PointSymbol3D,
+        promiseUtils,
+        reactiveUtils,
+        ShadowCastAnalysis,
+        SolidEdges3D,
+        TextSymbol3DLayer,
+      ] = await $arcgis.import([
+        "@arcgis/core/symbols/FillSymbol3DLayer.js",
+        "@arcgis/core/Graphic.js",
+        "@arcgis/core/layers/GraphicsLayer.js",
+        "@arcgis/core/symbols/callouts/LineCallout3D.js",
+        "@arcgis/core/geometry/support/meshUtils.js",
+        "@arcgis/core/geometry/Mesh.js",
+        "@arcgis/core/geometry/Point.js",
+        "@arcgis/core/symbols/MeshSymbol3D.js",
+        "@arcgis/core/symbols/PointSymbol3D.js",
+        "@arcgis/core/core/promiseUtils.js",
+        "@arcgis/core/core/reactiveUtils.js",
+        "@arcgis/core/analysis/ShadowCastAnalysis.js",
+        "@arcgis/core/symbols/edges/SolidEdges3D.js",
+        "@arcgis/core/symbols/TextSymbol3DLayer.js",
+      ]);
+
+      // === VISUAL ELEMENTS ===
+
+      const analysisAlpha = 0.65;
+      const buildingTintOk = [140, 226, 170, 1.0];
+      const buildingTintBad = [247, 157, 157, 1.0];
+
+      // === CONFIGURATION ===
+
+      const buildingState = {
+        location: new Point({
+          spatialReference: {
+            wkid: 102100,
+          },
+          x: 956796.2546309954,
+          y: 6009950.647797733,
+          z: 451,
+        }),
+        floors: 15,
+        rotation: 162,
+        width: 60,
+        depth: 20,
+        sideShift: 0,
+        firstFloorHeight: 9,
+        floorHeight: 3.5,
+      };
+
+      const shadowDesign = {
+        minDurationMilliseconds: 2.5 * 60 * 60 * 1000, // 2.5 hours per building
+        maxTotalHours: 30, // all buildings combined
+      };
+      const mainBuildingLayer = new GraphicsLayer();
+      const shadowTooltipsLayer = new GraphicsLayer({
+        title: "Shadow duration tooltips",
+      });
+
+      // === DOM REFERENCES ===
+
+      const viewElement = document.querySelector("arcgis-scene");
+      const floorsSlider = document.getElementById("floors-slider");
+      const widthSlider = document.getElementById("width");
+      const sideShiftSlider = document.getElementById("side-shift-slider");
+      const projectPanel = document.getElementById("project-panel");
+      const totalShadowElement = document.getElementById("total-shadow");
+
+      // === ANALYSIS ===
+
+      const totalShadowDuration = new ShadowCastAnalysis({
+        mode: "total-duration",
+        // Information for Zurich on Dec 21, 2025
+        startTimeOfDay: 29457000, // 08:10AM (Sunrise)
+        endTimeOfDay: 59879000, // 4:38PM (Sunset)
+        utcOffset: 1,
+        totalDurationOptions: {
+          mode: "hourly",
+          color: [140, 226, 170, analysisAlpha],
+        },
+      });
+
+      // === RUNTIME STATE ===
+
+      // Only update the building symbol when OK/not-OK actually changes.
+      let lastShadowPassStatus = null;
+      // Hide the loading spinner once we have a first valid shadow total.
+      let hasInitialShadowResult = false;
+
+      await customElements.whenDefined("arcgis-scene");
+      await viewElement.viewOnReady();
+
+      viewElement.map.addMany([mainBuildingLayer, shadowTooltipsLayer]);
+
+      const buildingGraphic = new Graphic({
+        geometry: createBuildingGeometry(),
+        symbol: createBuildingSymbol(null),
+      });
+      mainBuildingLayer.add(buildingGraphic);
+
+      const shadowPointsLayer = findLayerByTitle("ShadowCastAnalysisPoints");
+      const points = await getShadowPoints(shadowPointsLayer);
+
+      viewElement.analyses.add(totalShadowDuration);
+      const analysisView = await viewElement.whenAnalysisView(totalShadowDuration);
+      // Turn off default tooltips
+      analysisView.interactive = false;
+
+      await reactiveUtils.whenOnce(() => !viewElement.updating);
+
+      const durationGraphics = createDurationLabelGraphics(points);
+      shadowTooltipsLayer.addMany(durationGraphics);
+
+      // Debounced function that refreshes all duration labels (never runs concurrently).
+      const scheduleDurationUpdate = promiseUtils.debounce(async () => {
+        const graphicDurations = await Promise.all(
+          durationGraphics.map(async (g) => {
+            const screenPoint = viewElement.toScreen(g.geometry);
+            if (!screenPoint) {
+              setDurationLabel(g, null);
+              return;
+            }
+            return {
+              graphic: g,
+              durationMs: await analysisView.getDurationAtScreen({
+                x: screenPoint.x,
+                y: screenPoint.y,
+              }),
+            };
+          }),
+        );
+
+        let sumDurationMs = 0;
+        for (const { graphic, durationMs } of graphicDurations) {
+          setDurationLabel(graphic, durationMs);
+          if (Number.isFinite(durationMs)) {
+            sumDurationMs += durationMs;
+          }
+        }
+        updateTotalShadowColor(sumDurationMs);
+      });
+
+      // Refresh tooltip durations only when the view is settled.
+      reactiveUtils.when(
+        () => !viewElement.updating && !viewElement.interacting && !viewElement.navigating,
+        () => scheduleDurationUpdate(),
+        { initial: true },
+      );
+
+      // === EVENT LISTENERS ===
+
+      floorsSlider.addEventListener("calciteSliderInput", (event) => {
+        buildingState.floors = Number(event.target.value);
+        updateBuilding();
+      });
+
+      widthSlider.addEventListener("calciteSliderInput", (event) => {
+        buildingState.width = Number(event.target.value);
+        updateBuilding();
+      });
+
+      sideShiftSlider.addEventListener("calciteSliderInput", (event) => {
+        buildingState.sideShift = Number(event.target.value);
+        updateBuilding();
+      });
+
+      // --- HELPER FUNCTIONS ---
+
+      function updateBuilding() {
+        buildingGraphic.geometry = createBuildingGeometry();
+      }
+
+      // Make the building red or green depending on the shadow requirements
+      function createBuildingSymbol(isShadowOk) {
+        // `null` is used for the initial neutral (white) state before we compute totals.
+        const fillColor =
+          isShadowOk == null ? [255, 255, 255, 1.0] : isShadowOk ? buildingTintOk : buildingTintBad;
+        return new MeshSymbol3D({
+          symbolLayers: [
+            new FillSymbol3DLayer({
+              material: { color: fillColor },
+              edges: new SolidEdges3D({
+                color: [0, 0, 0, 0.5],
+                size: 0.5,
+              }),
+            }),
+          ],
+        });
+      }
+
+      // Create the building mesh
+      function createBuildingGeometry() {
+        const meshes = [];
+
+        const rotationRadians = (buildingState.rotation * Math.PI) / 180;
+        const offsetX = -buildingState.sideShift * Math.cos(rotationRadians);
+        const offsetY = -buildingState.sideShift * Math.sin(rotationRadians);
+
+        let currentZ = buildingState.location.z;
+
+        for (let i = 0; i < buildingState.floors; i++) {
+          const floorHeight = i === 0 ? buildingState.firstFloorHeight : buildingState.floorHeight;
+          const floorOrigin = new Point({
+            x: buildingState.location.x + offsetX,
+            y: buildingState.location.y + offsetY,
+            z: currentZ,
+            spatialReference: buildingState.location.spatialReference,
+          });
+
+          const floorMesh = Mesh.createBox(floorOrigin, {
+            size: {
+              width: buildingState.width,
+              depth: buildingState.depth,
+              height: floorHeight,
+            },
+          });
+          meshes.push(floorMesh);
+          // Increment Z by the height of the just-created floor
+          currentZ += floorHeight;
+        }
+        let buildingMesh = meshUtils.merge(meshes);
+
+        // Apply rotation around Z-axis
+        buildingMesh = buildingMesh.clone().rotate(0, 0, buildingState.rotation);
+        return buildingMesh;
+      }
+
+      function findLayerByTitle(layerTitle) {
+        return viewElement.map.allLayers.find((item) => item.title === layerTitle);
+      }
+
+      function createDurationLabelGraphics(points) {
+        // Create one label graphic per measurement point.
+        // The label text is filled in later after querying shadow duration.
+        return points.map(
+          (point) =>
+            new Graphic({
+              geometry: point,
+              symbol: createDurationLabelSymbol({
+                text: "…",
+                durationMs: null,
+              }),
+              attributes: {
+                durationText: "…",
+                durationIsOk: null,
+              },
+            }),
+        );
+      }
+
+      function createDurationLabelSymbol({ text, durationMs }) {
+        // Build a 3D text label symbol (with callout) for a single duration value.
+        // Green when < threshold, red when > threshold
+        const isOk = durationMs == null ? null : durationMs < shadowDesign.minDurationMilliseconds;
+        const backgroundColor =
+          isOk == null
+            ? [255, 255, 255, 0.65]
+            : isOk
+              ? [34, 197, 94, analysisAlpha]
+              : [239, 68, 68, analysisAlpha];
+        return new PointSymbol3D({
+          verticalOffset: {
+            screenLength: 10,
+            maxWorldLength: 50,
+            minWorldLength: 10,
+          },
+          symbolLayers: [
+            new TextSymbol3DLayer({
+              text,
+              size: 10,
+              material: { color: [255, 255, 255, 1.0] },
+              background: {
+                color: backgroundColor,
+              },
+            }),
+          ],
+          callout: new LineCallout3D({
+            size: 0.5,
+            color: [0, 0, 0, analysisAlpha],
+          }),
+        });
+      }
+
+      // Update the UI (chip + analysis color + building color) based on total shadow time.
+      function updateTotalShadowColor(sumDurationMs) {
+        const sumHours = sumDurationMs / (60 * 60 * 1000);
+        const isOk = sumHours < shadowDesign.maxTotalHours;
+
+        if (Number.isFinite(sumHours)) {
+          totalShadowElement.textContent = `${sumHours.toFixed(1)} h`;
+          totalShadowElement.classList.toggle("building-ok", isOk);
+          totalShadowElement.classList.toggle("building-bad", !isOk);
+        } else {
+          totalShadowElement.textContent = "—";
+          totalShadowElement.classList.remove("building-ok", "building-bad");
+        }
+
+        if (!hasInitialShadowResult && Number.isFinite(sumHours)) {
+          projectPanel.loading = false;
+          hasInitialShadowResult = true;
+        }
+
+        totalShadowDuration.totalDurationOptions.color = isOk
+          ? [0, 180, 0, analysisAlpha]
+          : [200, 0, 0, analysisAlpha];
+
+        if (lastShadowPassStatus !== isOk) {
+          buildingGraphic.symbol = createBuildingSymbol(isOk);
+          lastShadowPassStatus = isOk;
+        }
+      }
+
+      function setDurationLabel(graphic, duration) {
+        // Update a single label graphic (text + colors) if its displayed value changed.
+        const text = duration == null ? "—" : formatDuration(duration);
+        const isOk = duration == null ? null : duration < shadowDesign.minDurationMilliseconds;
+        if (graphic.attributes.durationText === text && graphic.attributes.durationIsOk === isOk)
+          return;
+
+        graphic.attributes.durationText = text;
+        graphic.attributes.durationIsOk = isOk;
+        graphic.symbol = createDurationLabelSymbol({
+          text,
+          durationMs: duration,
+        });
+      }
+
+      // Format a duration in milliseconds as H:MMh (e.g. 2:30h).
+      function formatDuration(durationMs) {
+        const totalMinutes = Math.round(durationMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+
+        return `${hours}:${String(minutes).padStart(2, "0")}h`;
+      }
+
+      // Query 3D point geometries (with Z) from a feature layer in the web scene.
+      async function getShadowPoints(shadowPointsLayer) {
+        await shadowPointsLayer.load();
+
+        const query = shadowPointsLayer.createQuery();
+        query.where = "1=1";
+        query.outFields = ["*"];
+        query.returnGeometry = true;
+        query.returnZ = true;
+
+        const featureSet = await shadowPointsLayer.queryFeatures(query);
+        return featureSet.features.map((f) => f.geometry);
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Generate univariate continuous size and color visualization in 3D | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      calcite-card {
+        --calcite-font-weight-medium: 550;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene basemap="topo-vector">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <calcite-card slot="bottom-right">
+        <span slot="heading">Total population</span>
+        <arcgis-slider-color-size-legacy precision="0"></arcgis-slider-color-size-legacy>
+      </calcite-card>
+    </arcgis-scene>
+
+    <script type="module">
+      const [FeatureLayer, colorAndSizeRendererCreator, histogram] = await $arcgis.import([
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/smartMapping/renderers/univariateColorSize.js",
+        "@arcgis/core/smartMapping/statistics/histogram.js",
+      ]);
+
+      /*****************************************************************
+       * Get a reference to the Scene component and slider
+       *****************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+      const colorSizeSlider = document.querySelector("arcgis-slider-color-size-legacy");
+
+      /*****************************************************************
+       * Setup the Scene component and the layer
+       *****************************************************************/
+      viewElement.camera = {
+        tilt: 52,
+        heading: 355.8,
+        position: {
+          x: 1431052,
+          y: 4394025,
+          z: 922291,
+          spatialReference: { wkid: 3857 },
+        },
+      };
+
+      // Create FeatureLayer instance with popupTemplate
+      const layer = new FeatureLayer({
+        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Enriched%20World%20Cities/FeatureServer/0",
+        visible: false,
+        popupTemplate: {
+          // autocasts as new PopupTemplate()
+          title: "{CITY_NAME}, {CNTRY_NAME}",
+          content: "Total population: {POP}",
+          fieldInfos: [
+            {
+              fieldName: "POP",
+              format: {
+                digitSeparator: true,
+                places: 0,
+              },
+            },
+          ],
+        },
+      });
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+      viewElement.map.add(layer);
+
+      /*****************************************************************
+       * Setup the color and size renderer generator and the ColorSizeSlider
+       *****************************************************************/
+      // Configure parameters for the renderer generator.
+      // the layer must be specified along with a field name
+      // or arcade expression. The view and other properties determine
+      // the appropriate default color and size schemes.
+      const params = {
+        layer: layer,
+        field: "POP",
+        view: viewElement.view,
+        symbolType: "3d-volumetric",
+        minValue: 0,
+        maxValue: 1500000,
+      };
+
+      // Generate a renderer visualizing a single variable
+      // with continuous color and size based on the
+      // statistics of the data in the provided layer
+      // and field name.
+      //
+      // This resolves to an object containing several helpful
+      // properties, including size/color schemes, statistics,
+      // the renderer, and visual variables
+      const colorSizeRendererResult =
+        await colorAndSizeRendererCreator.createContinuousRenderer(params);
+      layer.renderer = colorSizeRendererResult.renderer;
+      if (!layer.visible) {
+        layer.visible = true;
+      }
+
+      // Generate a histogram for use in the slider. Input the layer
+      // and field name to generate it.
+      // You can also use an arcade expression instead of
+      // a field and normalization field
+      const histogramResult = await histogram({
+        layer: layer,
+        field: params.field,
+        numBins: 40,
+        minValue: params.minValue,
+        maxValue: params.maxValue,
+      });
+      colorSizeSlider.updateFromRendererResult(colorSizeRendererResult, histogramResult);
+      colorSizeSlider.labelFormatFunction = (value) => {
+        return parseInt(value.toFixed(0)).toLocaleString();
+      };
+      colorSizeSlider.histogramConfig.standardDeviation = null;
+      // When the user slides the handle(s), update the renderer
+      // with the updated color and size visual variable objects
+      function changeEventHandler() {
+        const renderer = layer.renderer.clone();
+        renderer.visualVariables = colorSizeSlider.updateVisualVariables(renderer.visualVariables);
+        layer.renderer = renderer;
+      }
+      colorSizeSlider.addEventListener("arcgisThumbChange", changeEventHandler);
+      colorSizeSlider.addEventListener("arcgisThumbDrag", changeEventHandler);
+      colorSizeSlider.addEventListener("arcgisPropertyChange", changeEventHandler);
+    </script>
+  </body>
+</html>

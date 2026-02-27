@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Geometry operator - centroid analysis | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      #customLegend {
+        position: absolute;
+        bottom: 40px;
+        left: 20px;
+        z-index: 50;
+        background-color: white;
+        padding: 5px;
+        border-radius: 5px;
+        box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+        display: none;
+      }
+      #instructionsDiv {
+        position: absolute;
+        top: 12px;
+        right: 62px;
+        padding: 0 12px 0 12px;
+        background-color: rgba(255, 255, 255, 0.85);
+        border: 1px solid white;
+        color: black;
+        font-size: large;
+      }
+    </style>
+  </head>
+
+  <body class="calcite-mode-dark">
+    <arcgis-map zoom="6" center="-91.5, 32">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+    </arcgis-map>
+
+    <div id="customLegend">
+      <div id="labelPointDiv">Label Point</div>
+      <div id="centroidDiv">Centroid</div>
+      <div id="extentDiv">Extent</div>
+      <div id="extentCenterDiv">Extent center</div>
+    </div>
+
+    <div id="instructionsDiv">
+      <p>Click on a state to display the label point, centroid, extent, and extent center point.</p>
+    </div>
+
+    <script type="module">
+      const [
+        Map,
+        Graphic,
+        FeatureLayer,
+        symbolUtils,
+        SimpleMarkerSymbol,
+        SimpleLineSymbol,
+        SimpleFillSymbol,
+        centroidOperator,
+        labelPointOperator,
+      ] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/Graphic.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/symbols/support/symbolUtils.js",
+        "@arcgis/core/symbols/SimpleMarkerSymbol.js",
+        "@arcgis/core/symbols/SimpleLineSymbol.js",
+        "@arcgis/core/symbols/SimpleFillSymbol.js",
+        "@arcgis/core/geometry/operators/centroidOperator.js",
+        "@arcgis/core/geometry/operators/labelPointOperator.js",
+      ]);
+
+      const viewElement = document.querySelector("arcgis-map");
+
+      // Initialize the layer containing the state boundary polygons
+      const stateBoundaryFeatureLayer = new FeatureLayer({
+        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Cartographic_Boundary_Files_-_States_(500k)/FeatureServer/0",
+      });
+
+      viewElement.map = new Map({
+        basemap: "hybrid",
+        layers: [stateBoundaryFeatureLayer],
+      });
+
+      // Create a symbol for drawing the state polygons
+      const stateFillSymbol = {
+        type: "simple-fill",
+        color: [227, 139, 79, 0.8],
+        outline: {
+          color: [255, 255, 255],
+          width: 1,
+        },
+      };
+
+      // Create a symbol for drawing the extent
+      const extentFillSymbol = new SimpleFillSymbol({
+        color: [0, 0, 0, 0.1],
+        outline: {
+          color: "black",
+          style: "dash-dot",
+          width: 3,
+        },
+      });
+
+      // Create a symbol for drawing the centroid
+      const centroidMarkerSymbol = new SimpleMarkerSymbol({
+        color: "red",
+        size: "20px",
+        outline: {
+          // autocasts as new SimpleLineSymbol()
+          color: [255, 255, 255],
+          width: 1, // points
+        },
+      });
+
+      // Create a symbol for drawing the label point
+      const labelPointSymbol = new SimpleMarkerSymbol({
+        style: "square",
+        color: "blue",
+        size: "14px",
+        outline: {
+          // autocasts as new SimpleLineSymbol()
+          color: [255, 255, 0],
+          width: 1, // points
+        },
+      });
+
+      // Create a symbol for drawing the extent center
+      const extentCenterSymbol = new SimpleMarkerSymbol({
+        style: "triangle",
+        color: "yellow",
+        size: "14px",
+        outline: {
+          color: "black",
+          width: 1,
+        },
+      });
+
+      await viewElement.viewOnReady();
+
+      let stateGraphic;
+
+      // Listen for click events on the view
+      viewElement.addEventListener("arcgisViewClick", (event) => {
+        document.getElementById("instructionsDiv").style.display = "none";
+
+        // Return hit test results from the feature layer
+        // where it intersects the screen coordinates from the click event.
+        // The result is a polygon representing the state that was clicked.
+        viewElement.hitTest(event.detail).then((response) => {
+          if (response.results.length) {
+            const stateBoundaryPolygon = response.results.find((result) => {
+              return result.graphic.layer === stateBoundaryFeatureLayer;
+            }).graphic.geometry;
+
+            processPolygon(stateBoundaryPolygon);
+          }
+        });
+      });
+
+      // Process the centroid and label point of the state polygon
+      // and create graphics for the centroid, label point, extent center, and extent
+      const processPolygon = (geometry) => {
+        const stateCentroid = centroidOperator.execute(geometry);
+        const stateLabelPoint = labelPointOperator.execute(geometry);
+
+        // Clear the graphics layer on each click event
+        viewElement.graphics.removeAll();
+
+        // Create a graphic using the state boundary polygon
+        const stateGraphic = new Graphic({
+          geometry: geometry,
+          symbol: stateFillSymbol,
+        });
+
+        // Create graphics for the centroid point from the centroidOperator
+        const centroidGraphic = new Graphic({
+          geometry: stateCentroid,
+          symbol: centroidMarkerSymbol,
+        });
+
+        // Create a graphic for the label point from the labelPointOperator
+        const labelPointGraphic = new Graphic({
+          geometry: stateLabelPoint,
+          symbol: labelPointSymbol,
+        });
+
+        // Create a graphic for the extent center point
+        const extentCenterGraphic = new Graphic({
+          geometry: geometry.extent.center,
+          symbol: extentCenterSymbol,
+        });
+
+        // Create a graphic for the extent
+        const extentGraphic = new Graphic({
+          geometry: geometry.extent,
+          symbol: extentFillSymbol,
+        });
+
+        // Add the graphics to the view's graphics layer
+        viewElement.graphics.addMany([
+          extentGraphic,
+          stateGraphic,
+          centroidGraphic,
+          labelPointGraphic,
+          extentCenterGraphic,
+        ]);
+      };
+
+      // Create a custom legend for the graphics layer symbology
+      const displayLegend = () => {
+        document.getElementById("customLegend").style.display = "block";
+
+        // Extent center symbol
+        symbolUtils.renderPreviewHTML(extentCenterSymbol, {
+          node: document.getElementById("extentCenterDiv"),
+          size: { width: 20, height: 20 },
+          symbolConfig: { isSquareFill: true },
+        });
+
+        // Label point symbol
+        symbolUtils.renderPreviewHTML(labelPointSymbol, {
+          node: document.getElementById("labelPointDiv"),
+          size: { width: 20, height: 20 },
+          symbolConfig: { isSquareFill: true },
+        });
+
+        // Centroid symbol
+        symbolUtils.renderPreviewHTML(centroidMarkerSymbol, {
+          node: document.getElementById("centroidDiv"),
+          size: { width: 20, height: 20 },
+          symbolConfig: { isSquareFill: true },
+        });
+
+        // Extent symbol
+        symbolUtils.renderPreviewHTML(extentFillSymbol, {
+          node: document.getElementById("extentDiv"),
+          size: { width: 20, height: 20 },
+          symbolConfig: { isSquareFill: true },
+        });
+      };
+
+      displayLegend();
+    </script>
+  </body>
+</html>

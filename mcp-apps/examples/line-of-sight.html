@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Line of sight component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #infoDiv {
+        width: 300px;
+        padding: 0.1rem 1rem;
+        font-size: 0.8rem;
+        line-height: 1.3em;
+        background-color: #fff;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="82127fea11d6439abba3318cb93252f7">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <div id="infoDiv" slot="top-right">
+        <h3>Line of sight analysis</h3>
+        <calcite-label layout="inline">
+          <calcite-checkbox id="layerVisibility" checked></calcite-checkbox>
+          Show development layer
+        </calcite-label>
+      </div>
+      <arcgis-line-of-sight slot="top-right"></arcgis-line-of-sight>
+    </arcgis-scene>
+    <script type="module">
+      const [LineOfSightAnalysis, Point, Graphic, reactiveUtils] = await $arcgis.import([
+        "@arcgis/core/analysis/LineOfSightAnalysis.js",
+        "@arcgis/core/geometry/Point.js",
+        "@arcgis/core/Graphic.js",
+        "@arcgis/core/core/reactiveUtils.js",
+      ]);
+
+      // Get a reference to the Scene and LineOfSight components
+      const viewElement = document.querySelector("arcgis-scene");
+      const lineOfSightElement = document.querySelector("arcgis-line-of-sight");
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+
+      // Allow user to turn the layer with new planned buildings on/off
+      // and see how the line of sight analysis changes
+      const plannedBuildingsLayer = viewElement.map.layers
+        .filter((layer) => {
+          return layer.title === "Boston major projects - MajorProjectsBuildings";
+        })
+        .getItemAt(0);
+
+      document
+        .getElementById("layerVisibility")
+        .addEventListener("calciteCheckboxChange", (event) => {
+          plannedBuildingsLayer.visible = event.target.checked;
+        });
+
+      /**************************************
+       * Create an analysis by setting
+       * the initial observer and four targets
+       **************************************/
+
+      const analysis = new LineOfSightAnalysis({
+        observer: {
+          position: new Point({
+            latitude: 42.3521,
+            longitude: -71.0564,
+            z: 139,
+          }),
+        },
+        targets: [
+          createTarget(42.3492, -71.0529),
+          createTarget(42.3477, -71.0542),
+          createTarget(42.3485, -71.0533),
+          createTarget(42.3467, -71.0549),
+        ],
+      });
+
+      function createTarget(lat, lon, z) {
+        return {
+          position: new Point({
+            latitude: lat,
+            longitude: lon,
+            z: z || 0,
+          }),
+        };
+      }
+
+      // Add the analysis to the Scene
+      viewElement.analyses.add(analysis);
+      // Assign the analysis to the Line Of Sight component
+      lineOfSightElement.analysis = analysis;
+
+      const analysisView = await viewElement.whenAnalysisView(analysis);
+
+      /**************************************
+       * Add symbols to mark the intersections
+       * for the line of sight
+       **************************************/
+
+      // Watch for result changes
+      reactiveUtils.watch(
+        () => analysisView.results.map((result) => result?.intersectedLocation),
+        () => {
+          viewElement.graphics.removeAll();
+
+          analysisView.results.forEach((result) => {
+            if (result?.intersectedLocation) {
+              const graphic = new Graphic({
+                symbol: intersectionSymbol,
+                geometry: result.intersectedLocation,
+              });
+              viewElement.graphics.add(graphic);
+            }
+          });
+        },
+      );
+
+      // An inverted cone marks the intersection that occludes the view
+      const intersectionSymbol = {
+        type: "point-3d",
+        symbolLayers: [
+          {
+            type: "object",
+            resource: { primitive: "inverted-cone" },
+            material: { color: [255, 100, 100] },
+            height: 10,
+            depth: 10,
+            width: 10,
+            anchor: "relative",
+            anchorPosition: { x: 0, y: 0, z: -0.7 },
+          },
+        ],
+      };
+    </script>
+  </body>
+</html>

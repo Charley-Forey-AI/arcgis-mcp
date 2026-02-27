@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>TimeSlider component | Sample | ArcGIS Maps SDK for JavaScript</title>
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #titleDiv {
+        padding: 10px;
+        text-align: center;
+        background-color: #fff;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map zoom="4" center="-100,35">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-time-slider slot="bottom-right" layout="auto" mode="time-window" time-visible loop>
+      </arcgis-time-slider>
+      <div slot="top-right" id="titleDiv">Precipitation forecast for next 72 hours</div>
+      <calcite-input-time-zone
+        mode="name"
+        id="timezone-picker"
+        slot="top-right"></calcite-input-time-zone>
+      <arcgis-expand slot="top-left">
+        <arcgis-time-zone-label action-icon="time-zone"></arcgis-time-zone-label>
+      </arcgis-expand>
+      <arcgis-expand slot="top-left" mode="floating">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+    </arcgis-map>
+
+    <script type="module">
+      const [Map, FeatureLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+      ]);
+
+      const layer = new FeatureLayer({
+        url: "https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/NDFD_Precipitation_v1/FeatureServer/0",
+      });
+
+      // get the arcgis-map component element and wait for it to be ready
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.map = new Map({
+        basemap: "hybrid",
+        layers: [layer],
+      });
+
+      await viewElement.viewOnReady();
+      // add the layer to the map and set up the time slider once the map is ready
+      await viewElement.whenLayerView(layer);
+
+      const timeSlider = document.querySelector("arcgis-time-slider");
+      timeSlider.fullTimeExtent = layer.timeInfo.fullTimeExtent.expandTo("hours");
+      timeSlider.stops = {
+        interval: layer.timeInfo.interval,
+      };
+
+      const timezonePicker = document.getElementById("timezone-picker");
+      timezonePicker.addEventListener("calciteInputTimeZoneChange", () => {
+        viewElement.timeZone = timezonePicker.value;
+      });
+    </script>
+  </body>
+</html>

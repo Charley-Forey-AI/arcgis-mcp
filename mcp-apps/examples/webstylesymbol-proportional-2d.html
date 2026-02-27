@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>WebStyleSymbol - continuous size (2D) | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      #info {
+        z-index: 99;
+        position: absolute;
+        top: 15px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        padding: 10px 15px 5px 15px;
+        margin-left: auto;
+        margin-right: auto;
+        width: 70%;
+        background: rgba(255, 255, 255, 0.7);
+        font-size: 25pt;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map basemap="gray-vector" center="-98,40" zoom="4">
+      <arcgis-popup slot="popup"></arcgis-popup>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-legend slot="bottom-right"></arcgis-legend>
+    </arcgis-map>
+    <div id="info">Percent College Educated by County</div>
+
+    <script type="module">
+      const [FeatureLayer, WebStyleSymbol] = await $arcgis.import([
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/symbols/WebStyleSymbol.js",
+      ]);
+
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.viewOnReady();
+
+      const layer = new FeatureLayer({
+        portalItem: { id: "a7c5a8c8ea42416e8bd92df9872cc51b" },
+      });
+
+      layer.load().then(updateRenderer).catch(rejection);
+
+      // Update renderer with new web style symbol
+      function updateRenderer() {
+        const renderer = layer.renderer.clone();
+
+        const cb = renderer.classBreakInfos[0];
+        cb.symbol = new WebStyleSymbol({
+          name: "school",
+          styleName: "Esri2DPointSymbolsStyle",
+        });
+
+        layer.renderer = renderer;
+        viewElement.map.add(layer);
+      }
+
+      function rejection(error) {
+        console.error("Layer failed to load: ", error);
+      }
+    </script>
+  </body>
+</html>

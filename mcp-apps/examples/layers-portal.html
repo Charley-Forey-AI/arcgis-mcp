@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Create a layer from a portal item | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene basemap="gray-vector" viewing-mode="global" center="-87,34" zoom="7">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+    </arcgis-scene>
+    <script type="module">
+      const [Layer] = await $arcgis.import(["@arcgis/core/layers/Layer.js"]);
+      /***********************************************************
+       * Get a reference to the Scene component
+       ************************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+      await viewElement.viewOnReady();
+
+      /************************************************
+       *
+       * Create a layer from an existing Portal item hosted
+       * in ArcGIS Online using the ID of the item.
+       *
+       *************************************************/
+      Layer.fromPortalItem({
+        portalItem: {
+          // autocasts as new PortalItem()
+          id: "8444e275037549c1acab02d2626daaee",
+        },
+      })
+        .then(addLayer)
+        .catch(rejection);
+
+      // adds the layer to the map once it loads
+      function addLayer(layer) {
+        viewElement.map.add(layer);
+      }
+
+      function rejection(error) {
+        console.log("Layer failed to load: ", error);
+      }
+    </script>
+  </body>
+</html>

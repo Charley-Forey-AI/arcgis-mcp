@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Timestamp-offset field | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.3.3/chart.umd.min.js"></script>
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #rightPanel {
+        max-height: 98%;
+      }
+      calcite-shell-panel {
+        --calcite-shell-panel-min-width: 420px;
+        --calcite-shell-panel-width: 420px;
+        --calcite-shell-panel-max-width: 80%;
+      }
+
+      calcite-chip[selected] {
+        --calcite-color-border-1: var(--calcite-color-brand);
+      }
+
+      .canvas {
+        margin: 0 auto 1rem;
+      }
+
+      calcite-chip-group {
+        margin: 1rem auto 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <calcite-shell class="custom-example-theme">
+      <arcgis-map center="-100, 35" zoom="3" id="map-element">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-popup slot="popup"></arcgis-popup>
+      </arcgis-map>
+      <calcite-shell-panel id="rightPanel" slot="panel-end" display-mode="float">
+        <calcite-panel
+          id="statsPanel"
+          heading="Fatal Accidents in USA - 2021"
+          description="Explore accidents data">
+          <calcite-chip-group id="type-chips" selection-mode="single-persist">
+            <calcite-chip appearance="outline-fill" selected value="day">Daily</calcite-chip>
+            <calcite-chip appearance="outline-fill" value="week">Weekly</calcite-chip>
+            <calcite-chip appearance="outline-fill" value="month">Monthly</calcite-chip>
+          </calcite-chip-group>
+          <calcite-block expanded id="chart-block" heading="Total accidents by time of day">
+            <canvas class="canvas" id="chart-day" height="200" width="400"></canvas>
+            <canvas
+              class="canvas"
+              id="chart-week"
+              height="200"
+              width="400"
+              style="display: none"></canvas>
+            <canvas
+              class="canvas"
+              id="chart-month"
+              height="200"
+              width="400"
+              style="display: none"></canvas>
+          </calcite-block>
+          <calcite-block
+            expanded
+            id="day-chart-block"
+            heading="Click on the graph bar to see hourly chart"
+            style="display: none">
+            <canvas class="canvas" id="chart-day-distribution" height="200" width="400"></canvas>
+          </calcite-block>
+          <calcite-notice slot="footer" open width="full" icon>
+            <span slot="title">Note</span>
+            <span slot="message">Click on the graph bars to highlight the data in the map</span>
+          </calcite-notice>
+        </calcite-panel>
+      </calcite-shell-panel>
+    </calcite-shell>
+
+    <script type="module">
+      const [Map, FeatureLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+      ]);
+
+      const map = new Map({
+        basemap: {
+          portalItem: {
+            id: "3582b744bba84668b52a16b0b6942544",
+          },
+        },
+      });
+
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.map = map;
+
+      // Add fatal accidents of 2021 across USA
+      const layer = new FeatureLayer({
+        portalItem: {
+          id: "14079796fcb04fc186f412bf7c8577d5",
+        },
+        outFields: ["*"],
+      });
+      map.add(layer);
+
+      let layerView = await viewElement.whenLayerView(layer);
+
+      // Prepare data for total accidents by time of day chart
+      let charts = [];
+
+      // Query the layer for total accidents, grouped by hour of day
+      const hourResult = await runQuery("1=1", "extract(hour from tsodate)");
+      const hourData = hourResult.features?.map((f) => f.attributes["count"]) ?? [];
+      const hourLabels = hourResult.features?.map((f) => f.attributes["EXPR_1"]) ?? [];
+
+      // Create a bar chart showing total number of accidents by time of day
+      updateChart("chart-day", hourData, hourLabels, false, 3000);
+
+      // Query the layer for total accidents, grouped by month
+      const monthResult = await runQuery("1=1", "extract(month from tsodate)");
+      const monthData = monthResult.features?.map((f) => f.attributes["count"]) ?? [];
+      const monthLabels = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+
+      // Create a bar chart showing total number of accidents by months
+      updateChart("chart-month", monthData, monthLabels, false, 4000);
+
+      // Query the layer for total accidents, grouped by week days
+      const weekResult = await runQuery("1=1", "DAY_WEEK");
+      const weekData = weekResult.features?.map((f) => f.attributes["count"]) ?? [];
+      const weekLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+      // Create a bar chart showing total number of accidents by days of week
+      updateChart("chart-week", weekData, weekLabels, false, 7000);
+
+      // Create an empty chart for displaying accidents by hours breakdown when user
+      // clicks on month or week chart bars
+      let dayDistributionChart = updateChart("chart-day-distribution", [], hourLabels, true, 500);
+
+      // Called at startup to query and group accidents by hour, weekday, and month
+      async function runQuery(where, groupStats) {
+        // Create a query object that honors the layer settings
+        const query = layer.createQuery();
+        query.where = where;
+
+        // Define statistics to calculate count of accidents
+        query.outStatistics = [
+          {
+            statisticType: "count",
+            onStatisticField: "*",
+            outStatisticFieldName: "count",
+          },
+        ];
+        query.groupByFieldsForStatistics = [groupStats];
+        query.orderByFields = [groupStats];
+        const result = await layer.queryFeatures(query);
+        return result;
+      }
+
+      // Tracks the index of the currently selected bar in a chart.
+      // Used to highlight the selected bar and reset color when a new bar is clicked.
+      let previouslySelectedBarIndex = null;
+
+      // Handles chart bar clicks to highlight corresponding features on the map.
+      // Updates the layer view effect to visually filter accidents by selected time, weekday, or month.
+      async function applyFilterToAccidentsData(event, chart) {
+        const activePoints = chart.getElementsAtEventForMode(
+          event,
+          "nearest",
+          { intersect: true },
+          true,
+        );
+        if (!activePoints.length) return;
+        const idx = activePoints[0].index;
+        const label = chart.data.labels[idx];
+
+        // Reset previous selection if needed
+        if (previouslySelectedBarIndex >= 0) {
+          changeBarColor(chart, previouslySelectedBarIndex, "#007AC2");
+          if (previouslySelectedBarIndex === idx) {
+            previouslySelectedBarIndex = null;
+            layerView.featureEffect = undefined;
+            if (dayDistributionChart) {
+              dayDistributionChart.data.datasets[0].data = [];
+              dayDistributionChart.update();
+              dayChartBreakDownBlock.heading = "Click on the graph bar to see hourly chart";
+            }
+            return;
+          }
+        }
+
+        // Highlight selected bar
+        changeBarColor(chart, idx, "red");
+        previouslySelectedBarIndex = idx;
+
+        let where, title;
+        if (event.target.id === "chart-day") {
+          where = `extract(hour from tsodate) = ${label}`;
+        } else if (event.target.id === "chart-month") {
+          const queryValue = monthLabels.indexOf(label) + 1;
+          where = `extract(month from tsodate) = ${queryValue}`;
+          title = `Accidents by days in ${label}`;
+          dayDistributionStats(where, "extract(day from tsodate)", title);
+        } else {
+          const queryValue = weekLabels.indexOf(label) + 1;
+          where = `DAY_WEEK = ${queryValue}`;
+          title = `Accidents by hours on ${label}`;
+          dayDistributionStats(where, "extract(hour from tsodate)", title);
+        }
+
+        layerView.featureEffect = {
+          filter: { where },
+          excludedEffect: "blur(2px) opacity(0.2) grayscale(0.2)",
+        };
+      }
+
+      // Query and update the dayDistributionChart with breakdown stats when user clicks on a bar
+      async function dayDistributionStats(where, groupStats, label) {
+        const result = await runQuery(where, groupStats);
+        const features = result.features ?? [];
+        const chartData = features.map((f) => f.attributes["count"]);
+        const chartLabels = features.map((f) => f.attributes["EXPR_1"]);
+
+        if (dayChartBreakDownBlock.style.display === "none") {
+          dayChartBreakDownBlock.style.display = "block";
+        }
+
+        dayChartBreakDownBlock.heading = label;
+        dayDistributionChart.data.datasets[0].data = chartData;
+        dayDistributionChart.data.labels = chartLabels;
+        dayDistributionChart.data.datasets[0].backgroundColor = Array(chartData.length).fill(
+          "#007AC2",
+        );
+        dayDistributionChart.update();
+      }
+
+      // Updates the color of a chart bar when selected; called by applyFilterToAccidentsData
+      function changeBarColor(chart, index, color) {
+        chart.data.datasets[0].backgroundColor[index] = color;
+        chart.update();
+      }
+
+      // UI controls visible in the upper right panel
+      let activeGraph = "day";
+      const chartChoiceControl = document.getElementById("type-chips");
+      const chartBlock = document.getElementById("chart-block");
+      const chartDay = document.getElementById("chart-day");
+      const chartWeek = document.getElementById("chart-week");
+      const chartMonth = document.getElementById("chart-month");
+      const dayChartBreakDownBlock = document.getElementById("day-chart-block");
+
+      // Show the corresponding chart when user clicks one of the three buttons
+      chartChoiceControl?.addEventListener("calciteChipGroupSelect", (event) => {
+        // clear feature effect on the layer view and clicked bar chart
+        for (let chart of charts) {
+          changeBarColor(chart, previouslySelectedBarIndex, "#007AC2");
+        }
+        layerView.featureEffect = undefined;
+        previouslySelectedBarIndex = null;
+        dayChartBreakDownBlock.style.display = "none";
+        chartDay.style.display = "none";
+        chartWeek.style.display = "none";
+        chartMonth.style.display = "none";
+        switch (event.target.selectedItems[0].value) {
+          case "day":
+            chartBlock.heading = "Total accidents by time of day";
+            chartDay.style.display = "block";
+            break;
+          case "week":
+            chartBlock.heading = "Total accidents by day of week";
+            chartWeek.style.display = "block";
+            break;
+          case "month":
+            chartBlock.heading = "Total accidents by month";
+            chartMonth.style.display = "block";
+          default:
+        }
+      });
+
+      // Initializes charts for accidents by hour, weekday, and month when the app loads.
+      function updateChart(canvasId, data, labels, remove = false, max = 3000) {
+        const canvasElement = document.getElementById(canvasId);
+        if (!canvasElement) {
+          console.warn(`Canvas element with id "${canvasId}" not found.`);
+          return null;
+        }
+
+        const backgroundColors = Array(data.length).fill("#007AC2");
+        const chart = new Chart(canvasElement.getContext("2d"), {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [{ backgroundColor: backgroundColors, data }],
+          },
+          options: {
+            responsive: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                displayColors: false,
+                callbacks: {
+                  label: (context) =>
+                    `${context.label} - Total accidents: ${context.dataset.data[context.dataIndex]}`,
+                },
+              },
+            },
+            scales: { y: { beginAtZero: true, max } },
+          },
+        });
+
+        if (!remove) {
+          charts.push(chart);
+          canvasElement.onclick = async function (event) {
+            await applyFilterToAccidentsData(event, chart);
+          };
+        }
+        return chart;
+      }
+    </script>
+  </body>
+</html>

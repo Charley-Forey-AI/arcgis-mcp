@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Value Picker component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map center="-117.24, 34.097" zoom="11">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-expand slot="top-left" expand-tooltip="Expand legend">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+
+      <calcite-panel
+        slot="top-right"
+        id="pickerContainer"
+        heading="Land cover (categories and years)">
+        <arcgis-value-picker-legacy
+          id="timeValuePicker"
+          play-rate="1500"
+          loop></arcgis-value-picker-legacy>
+        <arcgis-value-picker-legacy
+          id="rasterFunctionPicker"
+          hide-play-button></arcgis-value-picker-legacy>
+      </calcite-panel>
+    </arcgis-map>
+
+    <script type="module">
+      const [Map, ImageryLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/ImageryLayer.js",
+      ]);
+
+      // Sentinel-2 10m land use/land cover time series image service.
+      const layer = new ImageryLayer({
+        url: "https://ic.imagery1.arcgis.com/arcgis/rest/services/Sentinel2_10m_LandCover/ImageServer",
+        effect: "brightness(110%) drop-shadow(2px, 2px, 3px, #000)",
+        blendMode: "multiply",
+      });
+
+      const map = new Map({
+        basemap: "topo-vector",
+        layers: [layer],
+      });
+
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.map = map;
+
+      await viewElement.whenLayerView(layer);
+
+      // get the raster functions that are available with the image service
+      // service has raster functions that only show specified land cover types
+      // add the raster function names to combobox items
+      let comboboxItems = [];
+      layer.rasterFunctionInfos.forEach((rf) => {
+        comboboxItems.push({
+          value: rf.name,
+          label: rf.name,
+        });
+      });
+
+      const rasterFunctionPicker = document.getElementById("rasterFunctionPicker");
+      rasterFunctionPicker.component = {
+        type: "combobox", // autocasts to ValuePickerCombobox
+        placeholder: "Pick Land Cover Type",
+        items: comboboxItems,
+      };
+      rasterFunctionPicker.values = [comboboxItems[0].label];
+      // Listen to arcgisPropertyChange event to know when the values change on the value picker
+      // set the ImageryLayer.rasterFunction - this function
+      // will process the image to show only the specified land cover type.
+      rasterFunctionPicker.addEventListener("arcgisPropertyChange", (event) => {
+        layer.rasterFunction = {
+          functionName: rasterFunctionPicker.values[0],
+        };
+      });
+      // set dates between 2017 - 2022
+      // image service has the land cover data between 2017 - 2022
+      const startDate = new Date(2017, 0, 1);
+      const endDate = new Date(2022, 0, 1);
+      let currentDate = startDate;
+
+      // create a label component showing years between 2017 - 2022
+      // this will be used by the value picker to change view.timeExtent
+      const labelComponentForDates = [];
+      while (currentDate <= endDate) {
+        labelComponentForDates.push({
+          value: currentDate.getTime(),
+          label: "Land cover in " + currentDate.getFullYear(),
+        });
+        currentDate.setFullYear(currentDate.getFullYear() + 1);
+      }
+
+      // set label component and values on the Value Picker
+      const timeValuePicker = document.getElementById("timeValuePicker");
+      timeValuePicker.values = [labelComponentForDates[0].value];
+      timeValuePicker.component = {
+        type: "label", // autocasts to ValuePickerLabel
+        items: labelComponentForDates,
+      };
+      // Listen to arcgisPropertyChange event to know when the values change on the value picker
+      // update the viewElement.timeExtent show to the land cover for the given year
+      timeValuePicker.addEventListener("arcgisPropertyChange", (event) => {
+        const startDate = new Date(timeValuePicker.values[0]);
+        const endDate = startDate.setFullYear(startDate.getFullYear() + 1);
+        viewElement.timeExtent = {
+          start: new Date(timeValuePicker.values[0]),
+          end: new Date(endDate),
+        };
+      });
+    </script>
+  </body>
+</html>

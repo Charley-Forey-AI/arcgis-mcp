@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Intro to layer effect | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      calcite-block {
+        width: 260px;
+      }
+
+      calcite-card {
+        padding-top: 4px;
+      }
+    </style>
+  </head>
+
+  <body class="calcite-mode-dark">
+    <arcgis-map item-id="c2a3444863f2466aaad9efa6e65063e1">
+      <arcgis-popup slot="popup"></arcgis-popup>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+
+      <calcite-block slot="top-right" heading="Bloom parameters" expanded>
+        <calcite-switch checked label-text-end="Apply bloom effect to volcanoes"></calcite-switch>
+        <calcite-card>
+          <calcite-slider
+            id="islider"
+            fill-placement="none"
+            label-handles
+            label-text="Intensity:"
+            label-ticks
+            max="10"
+            step="0.1"
+            ticks="10"
+            value="1.5"></calcite-slider>
+        </calcite-card>
+        <calcite-card>
+          <calcite-slider
+            id="bslider"
+            fill-placement="none"
+            label-handles
+            label-text="Blur radius:"
+            label-ticks
+            max="5"
+            step="0.1"
+            ticks="5"
+            value="0.5"></calcite-slider>
+        </calcite-card>
+        <calcite-card>
+          <calcite-slider
+            id="tslider"
+            fill-placement="none"
+            label-handles
+            label-text="Threshold:"
+            label-ticks
+            max="1"
+            step="0.1"
+            ticks="1"
+            value="0.1"></calcite-slider>
+        </calcite-card>
+      </calcite-block>
+    </arcgis-map>
+
+    <script type="module">
+      const FeatureLayer = await $arcgis.import("@arcgis/core/layers/FeatureLayer.js");
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.viewOnReady();
+      const applyBloomEffects = document.querySelector("calcite-switch");
+      // call updateEffects function when switcher changes
+      applyBloomEffects.addEventListener("calciteSwitchChange", updateEffects);
+      const islider = document.getElementById("islider");
+      const bslider = document.getElementById("bslider");
+      const tslider = document.getElementById("tslider");
+      // call updateEffects function when sliders change
+      [islider, bslider, tslider].forEach((slider) => {
+        slider.addEventListener("calciteSliderInput", updateEffects);
+      });
+      let layer; // get a reference to the volcanoes layer when the map loads
+      layer = viewElement.map.layers.getItemAt(0);
+      await updateEffects();
+      // If applyBloomEffects switcher is on, update effects when slider values change.
+      function updateEffects() {
+        // set layer effect to null when user switches off the bloom
+        if (!applyBloomEffects.checked) {
+          layer.effect = null;
+          return;
+        }
+        // apply the effect and adjust its parameters
+        layer.effect = `bloom(${islider.value}, ${bslider.value}px, ${tslider.value})`;
+      }
+    </script>
+  </body>
+</html>

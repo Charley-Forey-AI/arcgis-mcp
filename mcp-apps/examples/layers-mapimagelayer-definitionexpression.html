@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>MapImageLayer - Set definition expressions on sublayers | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      .padding-1 {
+        padding: 1rem;
+      }
+    </style>
+  </head>
+
+  <body>
+    <calcite-shell>
+      <arcgis-scene center="-99, 39" zoom="4">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+        <arcgis-compass slot="top-left"></arcgis-compass>
+      </arcgis-scene>
+      <calcite-panel slot="footer">
+        <calcite-label class="padding-1" alignment="center">
+          <span>Cities with a population greater than <b id="population-count">100,000</b></span>
+          <calcite-slider
+            id="population-slider-input"
+            min="0"
+            value="100000"
+            max="1000000"
+            step="10000"
+            snap
+            label-handles
+            ticks="50000"></calcite-slider>
+        </calcite-label>
+      </calcite-panel>
+    </calcite-shell>
+    <script type="module">
+      const [Map, MapImageLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/MapImageLayer.js",
+      ]);
+
+      // Initial population value for definition expression
+      let selectedPopulation = 100000;
+
+      // Get references to the slider and the text showing current population value
+      const slider = document.querySelector("#population-slider-input");
+      const sliderCount = document.querySelector("#population-count");
+      // Create a MapImageLayer instance pointing to a Map Service
+      // containing data about US Cities, Counties, States and Highways.
+      // Define sublayers with visibility for each layer in Map Service.
+      // Set an initial definition expression on the cities sublayer.
+      const layer = new MapImageLayer({
+        url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer",
+        sublayers: [
+          {
+            id: 3,
+            visible: false,
+          },
+          {
+            id: 2,
+            visible: true,
+          },
+          {
+            id: 1,
+            visible: true,
+          },
+          {
+            id: 0,
+            visible: true,
+            definitionExpression: "pop2000 > 100000",
+          },
+        ],
+      });
+      // Create the Map instance
+      // Set the basemap and add the layer to the map
+      const map = new Map({
+        basemap: "dark-gray-vector",
+        layers: [layer],
+      });
+
+      // Set the map on the Scene component
+      document.querySelector("arcgis-scene").map = map;
+
+      // Wait for the layer to load
+      // and get a reference to the cities sublayer.
+      await layer.loadAll();
+      const citiesSublayer = layer.findSublayerById(0);
+      // Add event listener for when the slider thumb is released
+      // and set the definition expression on the cities sublayer.
+      slider.addEventListener("calciteSliderChange", () => {
+        selectedPopulation = Number(slider.value);
+        citiesSublayer.definitionExpression = `pop2000 > ${selectedPopulation}`;
+      });
+
+      // Add event listener for when the slider input changes during sliding
+      // and update the text showing the current population value.
+      slider.addEventListener("calciteSliderInput", () => {
+        sliderCount.textContent = slider.value;
+      });
+    </script>
+  </body>
+</html>

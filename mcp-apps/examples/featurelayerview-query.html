@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Query features from a FeatureLayerView | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <!-- Load Charts components from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/charts-components/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #tractsBlock {
+        height: 100%;
+        width: 300px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+
+  <body class="calcite-mode-dark">
+    <calcite-shell>
+      <arcgis-map center="-73.95, 40.702" zoom="12" id="map-element">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-popup slot="popup"></arcgis-popup>
+      </arcgis-map>
+      <calcite-block expanded id="tractsBlock" slot="panel-end" heading="Marriage by Census Tract">
+        <calcite-list id="results"></calcite-list>
+      </calcite-block>
+    </calcite-shell>
+
+    <script type="module">
+      const [Map, FeatureLayer, reactiveUtils, centroidOperator] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/core/reactiveUtils.js",
+        "@arcgis/core/geometry/operators/centroidOperator.js",
+      ]);
+
+      // create the FeatureLayer pointing to the census tracts layer
+      const featureLayer = new FeatureLayer({
+        portalItem: {
+          id: "6885d0bc6bdc402683eff443e7081ef6",
+        },
+        // needed for query and popup
+        // having fields on the client side improves performance
+        // for example popup can display field values without making a request to the server
+        outFields: [
+          "County",
+          "NAME",
+          "GEOID",
+          "B12001_calc_pctDivorcedE",
+          "B12001_calc_pctMarriedE",
+          "B12001_calc_pctNeverE",
+          "B12001_calc_numDivorcedE",
+          "B12001_calc_numMarriedE",
+          "B12001_calc_numNeverE",
+        ],
+      });
+
+      const map = new Map({
+        basemap: "dark-gray-vector",
+        layers: [featureLayer],
+      });
+
+      // get the arcgis-map component element and set the map and constraints
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.map = map;
+      viewElement.constraints = {
+        minScale: 577790.5542885,
+      };
+
+      // wait for the layer view to be created
+      const layerView = await viewElement.whenLayerView(featureLayer);
+
+      let graphics; // will be used to store queried census tract features
+      const resultsList = document.getElementById("results");
+
+      // watch for the layer view to finish fetching its data
+      // layer view will fetch data as the user navigates the map
+      reactiveUtils.when(
+        () => !layerView.dataUpdating,
+        async () => {
+          // query all the features within the view's extent.
+          try {
+            const featureSet = await layerView.queryFeatures({
+              geometry: viewElement.extent,
+              returnGeometry: true,
+              orderByFields: ["GEOID"],
+            });
+
+            // store the queried features for later use
+            graphics = featureSet.features;
+
+            // populate the list with the queried features
+            // use createDocumentFragment for better performance
+            const fragment = document.createDocumentFragment();
+            // loop through the features and create a list item for each
+            // displaying the census tract name
+            // users can click on a list item to zoom to the feature and open a popup
+            graphics.forEach((result, index) => {
+              const attributes = result.attributes;
+              const name = attributes.NAME;
+              const item = document.createElement("calcite-list-item");
+              item.setAttribute("label", name);
+              item.setAttribute("value", index);
+              item.addEventListener("calciteListItemSelect", onListClickHandler);
+              fragment.appendChild(item);
+            });
+
+            // Empty the current list
+            resultsList.textContent = "";
+            resultsList.appendChild(fragment);
+          } catch (error) {
+            console.error("query failed: ", error);
+          }
+        },
+      );
+
+      // function to handle click on a list item
+      // zooms to the corresponding feature and opens a popup
+      const onListClickHandler = async (event) => {
+        const resultId = event.target.value;
+
+        // get the graphic corresponding to the clicked census tract
+        const result = resultId && graphics && graphics[parseInt(resultId, 10)];
+
+        if (result) {
+          try {
+            // zoom to the feature's extent and open a popup
+            await viewElement.goTo(result.geometry.extent.expand(2));
+            const centroid = centroidOperator.execute(result.geometry);
+
+            viewElement.openPopup({
+              features: [result],
+              location: centroid,
+            });
+          } catch (error) {
+            if (error.name != "AbortError") {
+              console.error(error);
+            }
+          }
+        }
+      };
+    </script>
+  </body>
+</html>

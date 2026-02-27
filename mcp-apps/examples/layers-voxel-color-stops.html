@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Modify the color scheme of a continuous variable | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #panelVoxelControl {
+        max-width: 300px;
+        max-height: calc(100vh - 100px);
+        overflow: auto;
+      }
+
+      #variableColorScheme {
+        height: 25px;
+        width: 100%;
+        border: 1px solid;
+      }
+
+      .colorRowTitle {
+        color: var(--calcite-color-text-1);
+        font-size: var(--calcite-font-size--1);
+        margin: 10px 0px 0px;
+      }
+
+      .btnColorPicker {
+        border: 1px solid var(--calcite-color-border-1);
+        width: 60px;
+        height: 30px;
+        cursor: pointer;
+        margin-left: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-scene item-id="3a922ed0c7a8489ea4fbe8747ac560ba">
+      <arcgis-zoom slot="top-left"> </arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <calcite-panel id="panelVoxelControl" style="visibility: hidden" slot="top-right">
+        <calcite-block label="Current Variable" expanded>
+          <calcite-label>
+            Current Variable:
+            <calcite-select hidden id="selectVariable" label="Current Variable"> </calcite-select>
+          </calcite-label>
+          <calcite-label>
+            Color Scheme:
+            <div id="variableColorScheme"></div>
+          </calcite-label>
+        </calcite-block>
+        <calcite-block label="Color scheme settings" expanded>
+          <calcite-button id="buttonAddColorStop">Add Color Stop</calcite-button>
+          <div class="colorRowTitle">
+            <div style="float: left; width: 175px">Position(%):</div>
+            <div>Color:</div>
+          </div>
+          <div class="colorRow" id="containerColorStops"></div>
+        </calcite-block>
+      </calcite-panel>
+      <calcite-color-picker
+        id="colorPicker"
+        style="visibility: hidden"
+        clearable
+        channels-disabled
+        saved-disabled
+        scale="s">
+      </calcite-color-picker>
+      <arcgis-expand slot="bottom-left">
+        <arcgis-legend id="expandLegend"></arcgis-legend>
+      </arcgis-expand>
+    </arcgis-scene>
+
+    <script type="module">
+      const VoxelColorStop = await $arcgis.import("@arcgis/core/layers/voxel/VoxelColorStop.js");
+
+      const viewElement = document.querySelector("arcgis-scene");
+      const selectVariable = document.getElementById("selectVariable");
+      const panelVoxelControl = document.getElementById("panelVoxelControl");
+      const variableColorScheme = document.getElementById("variableColorScheme");
+      const containerColorStops = document.getElementById("containerColorStops");
+      const buttonAddColorStop = document.getElementById("buttonAddColorStop");
+      const colorPicker = document.getElementById("colorPicker");
+
+      await viewElement.viewOnReady();
+
+      const voxelLayer = viewElement.map.layers.find((layer) => layer.type === "voxel");
+
+      await viewElement.whenLayerView(voxelLayer);
+
+      // Show the control after the voxel layer is in the component's view
+      panelVoxelControl.style.visibility = "visible";
+
+      let colorGradient = "";
+      let currentVariableStyle = null;
+      let colorStopsList = [];
+      let selectedIndexColor = 0;
+
+      voxelLayer.popupEnabled = true;
+      voxelLayer.renderMode = "volume";
+      voxelLayer.enableIsosurfaces = false;
+
+      for (let i = 0; i < voxelLayer.variables.length; ++i) {
+        const vxlVariable = voxelLayer.variables.getItemAt(i);
+        const item = document.createElement("calcite-option");
+        item.setAttribute("label", voxelLayer.variableStyles.getItemAt(i).label);
+        item.setAttribute("value", vxlVariable.id);
+        if (vxlVariable.id === 1) {
+          item.selected = true;
+          voxelLayer.currentVariableId = vxlVariable.id;
+        }
+        selectVariable.hidden = false;
+        selectVariable.appendChild(item);
+      }
+      currentVariableStyle = voxelLayer.getVariableStyle(null);
+      let transferFunction = currentVariableStyle.transferFunction;
+
+      // This function is to either reset the list and the color scheme color gradient or
+      // To refresh the color scheme color gradient
+      function changeColorScheme(toReset) {
+        if (toReset) {
+          colorStopsList = [];
+          while (containerColorStops.hasChildNodes()) {
+            containerColorStops.removeChild(containerColorStops.firstChild);
+          }
+        }
+        colorGradient = "linear-gradient(to right";
+        for (let i = 0; i < transferFunction.colorStops.length; i++) {
+          // colorStop's position is a normalized (i.e. 0 to 1) value.
+          // It can be converted to percentage for display or use it for styling a color gradient background.
+          let colorPercentage = (transferFunction.colorStops.getItemAt(i).position * 100).toFixed(
+            1,
+          );
+          colorGradient += `, ${transferFunction.colorStops.getItemAt(i).color.toHex()} ${colorPercentage}%`;
+          toReset &&
+            createContinuousVariableItem(i, transferFunction.colorStops.getItemAt(i), false);
+        }
+        colorGradient += ")";
+        variableColorScheme.style.backgroundImage = colorGradient;
+      }
+
+      function createContinuousVariableItem(continuousIndex, colorStop, addNew) {
+        const divItemRow = document.createElement("div");
+        const divItemCol = document.createElement("div");
+        const itemPositionLabel = document.createElement("calcite-label");
+        const itemPositionInput = document.createElement("calcite-input");
+        const itemColorButton = document.createElement("button");
+        const divItemDeleteAction = document.createElement("div");
+        const itemIcon = document.createElement("calcite-icon");
+        divItemRow.classList.add("colorRow");
+        itemPositionLabel.textContent = "Position";
+        itemPositionLabel.layout = "inline";
+        itemPositionInput.id = `item${continuousIndex}_${colorStop.position.toFixed(3)}_Input`;
+        itemPositionInput.type = "number";
+
+        // It is required to have position 0 as the first colorStop and 1 as the last colorStop.
+        if (colorStop.position === 0 || colorStop.position === 1) {
+          // Position 0 and 1 as a non-editable position. Colors for position 0 and 1 are editable.
+          itemPositionInput.readOnly = true;
+          itemIcon.icon = "lock";
+          divItemDeleteAction.style = "float:right; width:15px; padding:2px 10px;";
+        } else {
+          itemIcon.icon = "trash";
+          divItemDeleteAction.style = "float:right; width:15px; padding:2px 10px; cursor: pointer;";
+          divItemDeleteAction.onclick = function () {
+            const index = colorStopsList
+              .map((obj) => obj.itemPositionInput)
+              .indexOf(itemPositionInput.id);
+            transferFunction.colorStops.removeAt(index);
+            colorStopsList.splice(index, 1);
+            divItemRow.remove();
+            changeColorScheme(false);
+          };
+
+          /* Listen to changes on the colorStop's position
+           *  only allow updates on the position when the position is not overlapping the previous and next colorStop
+           */
+          itemPositionInput.addEventListener("calciteInputChange", function (e) {
+            // A continuous variable can have multiple colorStops.
+            // If a colorStop needs to be modified or removed, it is important to always check the index because it can change.
+            // Having a separate array variable that stores all the colorStops can help to specify which index to use.
+            const index = colorStopsList.map((obj) => obj.itemPositionInput).indexOf(this.id);
+            const prevColorStop =
+              index === 0 ? null : transferFunction.colorStops.getItemAt(index - 1);
+            const nextColorStop =
+              index === transferFunction.colorStops.length - 1
+                ? null
+                : transferFunction.colorStops.getItemAt(index + 1);
+            const thisColorStop = transferFunction.colorStops.getItemAt(index);
+            // Prevent a colorStop from overlapping the previous or next colorStop.
+            this.min = (prevColorStop.position * 100).toFixed(1) + 0.1;
+            this.max = (nextColorStop.position * 100).toFixed(1) - 0.1;
+            if (
+              parseFloat(this.value) <= parseFloat((prevColorStop.position * 100).toFixed(1)) ||
+              parseFloat(this.value) >= parseFloat((nextColorStop.position * 100).toFixed(1))
+            ) {
+              e.preventDefault();
+              this.value = (thisColorStop.position * 100).toFixed(1);
+            } else {
+              // Updating the position of a colorStop
+              thisColorStop.position = (this.value / 100).toFixed(3);
+              colorStopsList[index].position = (this.value / 100).toFixed(3);
+            }
+            changeColorScheme(false);
+          });
+        }
+        itemPositionInput.value = (colorStop.position * 100).toFixed(1).toString();
+        divItemCol.style = "float: left; width: 150px;";
+        itemColorButton.classList.add("btnColorPicker");
+        itemColorButton.id = `item${continuousIndex}_${colorStop.position.toFixed(3)}_Button`;
+        itemColorButton.style.background = colorStop.color;
+        if (addNew) {
+          // Adding the new colorStop before the last index.
+          transferFunction.colorStops.add(colorStop, continuousIndex - 1);
+          containerColorStops.insertBefore(divItemRow, containerColorStops.lastElementChild);
+          // Updating the array variable to include the new color stop.
+          // Remember to keep the index the same as in the colorStops collection
+          colorStopsList.splice(continuousIndex - 1, 0, {
+            id: continuousIndex,
+            itemPositionInput: itemPositionInput.id,
+            itemColorButton: itemColorButton.id,
+            position: colorStop.position,
+            color: colorStop.color,
+          });
+        } else {
+          containerColorStops.appendChild(divItemRow);
+          colorStopsList.push({
+            id: continuousIndex,
+            itemPositionInput: itemPositionInput.id,
+            itemColorButton: itemColorButton.id,
+            position: colorStop.position,
+            color: colorStop.color,
+          });
+        }
+        divItemRow.appendChild(divItemCol);
+        divItemCol.appendChild(itemPositionInput);
+        divItemRow.appendChild(itemColorButton);
+        divItemRow.appendChild(divItemDeleteAction);
+        divItemDeleteAction.appendChild(itemIcon);
+        itemColorButton.addEventListener("click", function () {
+          const rect = this.getBoundingClientRect();
+          let topValue = rect.bottom;
+          if (rect.bottom + colorPicker.clientHeight >= document.documentElement.clientHeight) {
+            topValue = rect.top - colorPicker.clientHeight;
+          }
+          selectedIndexColor = colorStopsList.map((obj) => obj.itemColorButton).indexOf(this.id);
+          colorPicker.style = `position:absolute;top:${topValue}px;right:${window.innerWidth + 20 - rect.right}px;z-index:999`;
+          colorPicker.value = colorStop.color.toHex();
+        });
+      }
+      changeColorScheme(true);
+
+      /* Listen to the changes on the selected variable
+       *  update the color scheme and the list of colorStops
+       */
+      selectVariable.addEventListener("calciteSelectChange", function () {
+        voxelLayer.currentVariableId = selectVariable.selectedOption.value;
+        currentVariableStyle = voxelLayer.getVariableStyle(null);
+        transferFunction = currentVariableStyle.transferFunction;
+        changeColorScheme(true);
+      });
+
+      // Add a click event to add a colorStop on a variable
+      buttonAddColorStop.addEventListener("click", function (e) {
+        const prevColorStop = transferFunction.colorStops.getItemAt(
+          transferFunction.colorStops.length - 2,
+        );
+        const nextColorStop = transferFunction.colorStops.getItemAt(
+          transferFunction.colorStops.length - 1,
+        );
+        const thisPosition =
+          (nextColorStop.position - prevColorStop.position) / 2 + prevColorStop.position;
+        // Prevents adding a new colorStop with the same position as the previous colorStop or the next colorStop
+        if (
+          prevColorStop.position.toFixed(3) === thisPosition.toFixed(3) ||
+          thisPosition.toFixed(3) === nextColorStop.position.toFixed(3)
+        ) {
+          e.preventDefault();
+        } else {
+          const colorstop = new VoxelColorStop({
+            color: [0, 0, 255, 255],
+            position: thisPosition,
+          });
+          createContinuousVariableItem(transferFunction.colorStops.length, colorstop, true);
+          changeColorScheme(false);
+        }
+      });
+
+      // Update the color of a colorStop
+      colorPicker.addEventListener("calciteColorPickerChange", function () {
+        const colorStop = transferFunction.colorStops.getItemAt(selectedIndexColor);
+        const btnColor = document.getElementById(
+          colorStopsList[selectedIndexColor].itemColorButton,
+        );
+        btnColor.style.background = colorPicker.value;
+        colorStop.color = colorPicker.value;
+        changeColorScheme(false);
+      });
+
+      /* Listen to a click outside the colorPicker element
+       *  close the color picker window
+       */
+      document.addEventListener("click", (e) => {
+        if (e.target !== colorPicker && !e.target.classList.contains("btnColorPicker")) {
+          colorPicker.style = "visibility:hidden";
+        }
+      });
+    </script>
+  </body>
+</html>

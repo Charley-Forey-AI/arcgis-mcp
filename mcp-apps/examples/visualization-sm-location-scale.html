@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Vary point sizes by scale | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      #infoDiv {
+        background: white;
+        padding: 10px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map>
+      <arcgis-popup slot="popup"></arcgis-popup>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <div id="infoDiv" slot="top-right">
+        <calcite-button id="toggle-auto-size">Enable auto size by scale</calcite-button>
+      </div>
+    </arcgis-map>
+
+    <script type="module">
+      const [FeatureLayer, SimpleRenderer, Map, locationRendererCreator] = await $arcgis.import([
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/renderers/SimpleRenderer.js",
+        "@arcgis/core/Map.js",
+        "@arcgis/core/smartMapping/renderers/location.js",
+      ]);
+      const renderer = new SimpleRenderer({
+        symbol: {
+          type: "simple-marker", // autocasts as new SimpleMarkerSymbol()
+          color: "dodgerblue",
+          outline: {
+            color: [255, 255, 255, 0.7],
+            width: 0.5,
+          },
+          size: 7.5, // 7.5 points is 10px
+        },
+      });
+      const layer = new FeatureLayer({
+        portalItem: {
+          id: "cb1886ff0a9d4156ba4d2fadd7e8a139",
+        },
+        renderer: renderer,
+      });
+
+      const baseLayer = new FeatureLayer({
+        portalItem: {
+          id: "2b93b06dc0dc4e809d3c8db5cb96ba69",
+        },
+        legendEnabled: false,
+        popupEnabled: false,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [200, 200, 200, 0.75],
+            outline: {
+              color: "white",
+              width: 0.5,
+            },
+          },
+        },
+      });
+
+      const spatialReference = {
+        wkid: 54035,
+      };
+
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.map = new Map({
+        layers: [baseLayer, layer],
+      });
+      viewElement.spatialReference = spatialReference;
+      viewElement.graphics = [
+        {
+          symbol: {
+            type: "simple-fill",
+            color: null,
+            outline: {
+              width: 1,
+              color: [200, 200, 200, 0.75],
+            },
+          },
+          geometry: {
+            type: "extent",
+            xmin: -180,
+            xmax: 180,
+            ymin: -90,
+            ymax: 90,
+            spatialReference: { wkid: 4326 },
+          },
+        },
+      ];
+      await viewElement.viewOnReady();
+      viewElement.goTo(viewElement.graphics);
+      viewElement.constraints.rotationEnabled = false;
+
+      const toggleButton = document.getElementById("toggle-auto-size");
+      toggleButton.addEventListener("click", toggleAutoSize);
+
+      function toggleAutoSize() {
+        let sizeOptimizationEnabled = false;
+
+        if (toggleButton.textContent === "Enable auto size by scale") {
+          toggleButton.textContent = "Disable auto size by scale";
+          sizeOptimizationEnabled = true;
+        } else {
+          toggleButton.textContent = "Enable auto size by scale";
+        }
+        // generates a new renderer with a scale-dependent
+        // size visual variable to vary icon size by scale
+        locationRendererCreator
+          .createRenderer({
+            layer: layer,
+            view: viewElement.view,
+            sizeOptimizationEnabled: sizeOptimizationEnabled,
+          })
+          .then((rendererResponse) => {
+            // the renderer contains a size variable with stops
+            // mapping icon sizes to scale values
+            const renderer = rendererResponse.renderer;
+            renderer.symbol.color = "dodgerblue";
+            layer.renderer = renderer;
+          })
+          .catch((error) => {
+            console.error(error);
+          });
+      }
+    </script>
+  </body>
+</html>

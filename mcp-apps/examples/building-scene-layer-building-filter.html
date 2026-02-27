@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Filter BuildingSceneLayer with BuildingFilter | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+        }
+
+        calcite-panel {
+            width: 300px;
+
+            &>div {
+                display: flex;
+                flex-direction: column;
+                gap: var(--calcite-spacing-md);
+                padding: var(--calcite-spacing-md);
+            }
+        }
+
+        calcite-segmented-control {
+            margin-top: var(--calcite-spacing-sm);
+        }
+    </style>
+</head>
+
+<body>
+    <arcgis-scene item-id="9d2ba1f944af47929a830b24ebffea67">
+        <arcgis-home slot="top-left"></arcgis-home>
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+        <arcgis-compass slot="top-left"></arcgis-compass>
+
+        <arcgis-expand slot="top-left" mode="floating" visual-scale="m">
+            <arcgis-layer-list></arcgis-layer-list>
+        </arcgis-expand>
+
+        <calcite-panel slot="bottom-right" heading="Using Building Filters"
+            description="Isolate specific levels of a building using the filter options below.">
+            <calcite-scrim id="loader" loading=""></calcite-scrim>
+
+            <div class="content">
+                <calcite-label layout="inline">
+                    Enable filters
+                    <calcite-switch id="filter-toggle" checked=""></calcite-switch>
+                </calcite-label>
+
+                <calcite-label>
+                    Level range
+                    <calcite-slider id="level-control" ticks="1" label-ticks label-handles min="0" max="9"
+                        max-label="Highest level" min-label="Lowest level"></calcite-slider>
+                </calcite-label>
+
+                <calcite-label>
+                    Filter mode for outside range
+                    <calcite-segmented-control id="outside-range-mode" value="x-ray" layout="horizontal">
+                        <calcite-segmented-control-item value="x-ray">x-ray</calcite-segmented-control-item>
+                        <calcite-segmented-control-item value="wire-frame">wire-frame</calcite-segmented-control-item>
+                        <calcite-segmented-control-item value="hidden" checked>hidden</calcite-segmented-control-item>
+                    </calcite-segmented-control>
+                </calcite-label>
+            </div>
+        </calcite-panel>
+    </arcgis-scene>
+
+    <script type="module">
+        const [BuildingFilter, BuildingFilterBlock] = await $arcgis.import([
+            "@arcgis/core/layers/support/BuildingFilter.js",
+            "@arcgis/core/layers/support/BuildingFilterBlock.js",
+        ]);
+
+        // --------------------------------------------------------------------------
+        // Constants
+        // --------------------------------------------------------------------------
+        const levelModelName = "bldglevel";
+        const LEVELS_FILTER_ID = "my-level-filter";
+
+        // --------------------------------------------------------------------------
+        // DOM references
+        // --------------------------------------------------------------------------
+        const viewElement = document.querySelector("arcgis-scene");
+        const loader = document.getElementById("loader");
+        const filterToggle = document.getElementById("filter-toggle");
+        const levelSlider = document.getElementById("level-control");
+        const outsideRangeMode = document.getElementById("outside-range-mode");
+
+        // --------------------------------------------------------------------------
+        // Initialize view + layer
+        // --------------------------------------------------------------------------
+        await viewElement.viewOnReady();
+
+        const layer = viewElement.map.allLayers.find(
+            (lyr) => lyr.title === "Main BSL: Turanga Library",
+        );
+
+        await loadStatsForLayer(layer);
+
+        // --------------------------------------------------------------------------
+        // Configure slider bounds from domain info
+        // --------------------------------------------------------------------------
+        const fieldInfo = findFieldInfoByModelName(layer, levelModelName);
+        const domainInfo = getDomainInfo([fieldInfo]);
+        const min = domainInfo.allowedValues.at(0);
+        const max = domainInfo.allowedValues.at(-1);
+
+        levelSlider.min = min;
+        levelSlider.max = max;
+
+        levelSlider.minValue = 3;
+        levelSlider.maxValue = 5;
+
+        // --------------------------------------------------------------------------
+        // Filter setup
+        // --------------------------------------------------------------------------
+        const levelsFilter = new BuildingFilter({
+            id: LEVELS_FILTER_ID,
+            filterBlocks: createFilterBlocks(levelSlider.minValue, levelSlider.maxValue),
+        });
+
+        layer.activeFilterId = LEVELS_FILTER_ID;
+        layer.filters = [levelsFilter];
+
+        // --------------------------------------------------------------------------
+        // UI events
+        // --------------------------------------------------------------------------
+        filterToggle.addEventListener("calciteSwitchChange", () => {
+            layer.activeFilterId = filterToggle.checked ? LEVELS_FILTER_ID : null;
+        });
+
+        levelSlider.addEventListener("calciteSliderChange", () => {
+            levelsFilter.filterBlocks = createFilterBlocks(
+                levelSlider.minValue,
+                levelSlider.maxValue,
+                outsideRangeMode.value,
+            );
+        });
+
+        outsideRangeMode.addEventListener("calciteSegmentedControlChange", () => {
+            levelsFilter.filterBlocks = createFilterBlocks(
+                levelSlider.minValue,
+                levelSlider.maxValue,
+                outsideRangeMode.value,
+            );
+        });
+
+        // --------------------------------------------------------------------------
+        // UI ready
+        // --------------------------------------------------------------------------
+        loader.hidden = true;
+        loader.loading = false;
+
+        // --------------------------------------------------------------------------
+        // Filter helpers
+        // --------------------------------------------------------------------------
+        function createFilterBlocks(min, max = min, outsideRangeMode = "hidden") {
+            const selectedLevelsBlock = new BuildingFilterBlock({
+                filterExpression: `(${levelModelName} >= ${min} AND ${levelModelName} <= ${max})`,
+                filterMode: {
+                    type: "solid",
+                },
+            });
+
+            const outsideRangeBlock =
+                outsideRangeMode !== "hidden"
+                    ? new BuildingFilterBlock({
+                        filterExpression: `(${levelModelName} < ${min} OR ${levelModelName} > ${max})`,
+                        filterMode: getFilterMode(outsideRangeMode),
+                    })
+                    : undefined;
+
+            return outsideRangeBlock != null
+                ? [selectedLevelsBlock, outsideRangeBlock]
+                : [selectedLevelsBlock];
+        }
+        function getFilterMode(mode) {
+            if (mode === "wire-frame") {
+                return {
+                    type: "wire-frame",
+                    edges: {
+                        type: "sketch",
+                        "color": [
+                            225,
+                            60,
+                            20
+                        ],
+                        "size": 0.5,
+                        "transparency": 35,
+                        "extensionLength": 5
+                    },
+                };
+            }
+            return {
+                type: mode,
+            };
+        }
+
+        // --------------------------------------------------------------------------
+        // Data helpers
+        // --------------------------------------------------------------------------
+        async function loadStatsForLayer(layer, signal) {
+            await layer.load({
+                signal,
+            });
+            await layer.loadAll();
+            throwIfAborted(signal);
+            // Some old layers may not have stats
+            if (layer.summaryStatistics) {
+                await layer.summaryStatistics.load({
+                    signal,
+                });
+            }
+        }
+
+        /**
+         * Combines all the provided information about fields into a single object which
+         * we can use to perform validations or determine the textual representation of
+         * a value.
+         */
+        function getDomainInfo(fieldInfos) {
+            const result = {
+                fieldValueMap: new Map(),
+                allowedValues: [],
+            };
+            for (const info of fieldInfos) {
+                const src = info.fieldValueMap;
+                const dst = result.fieldValueMap;
+                src.forEach((valueName, fieldValue) => {
+                    if (!dst.has(fieldValue)) {
+                        dst.set(fieldValue, valueName);
+                        result.allowedValues.push(fieldValue);
+                    }
+                });
+            }
+            result.allowedValues.sort((a, b) => a - b);
+            return result;
+        }
+
+        /**
+         * Finds information about a building component field by combining data found
+         * in the `BuildingSummaryStatistics` and in field domains.
+         */
+        function findFieldInfoByModelName(layer, modelName) {
+            const fieldStats = findFieldStatisticsByModelName(layer, modelName);
+            // Older layers may not have statistics
+            if (fieldStats == null) {
+                return null;
+            }
+            const fieldName = fieldStats.fieldName;
+            // Shouldn't happen, but does =(
+            if (fieldName == null || !fieldName) {
+                return null;
+            }
+            const fieldDomain = findFieldCodedValueDomain(layer, fieldName);
+            const fieldValueMap = new Map();
+            for (const value of fieldStats.mostFrequentValues ?? []) {
+                if (typeof value === "number") {
+                    fieldValueMap.set(
+                        value,
+                        fieldDomain != null ? fieldDomain.getName(value) : String(value),
+                    );
+                }
+            }
+            return { fieldName, fieldValueMap };
+        }
+
+        /**
+         * Finds the `CodedValueDomain` for specified field in the first building
+         * component sublayer which has it.
+         */
+        function findFieldCodedValueDomain(layer, fieldName) {
+            for (const sublayer of layer.allSublayers) {
+                const domain =
+                    sublayer.type === "building-component" ? sublayer.getFieldDomain?.(fieldName) : null;
+                if (domain?.type === "coded-value") {
+                    return domain;
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Tries to find a `BuildingFieldStatistics` object in the specified layer containing
+         * the provided `modelName`.
+         */
+        function findFieldStatisticsByModelName(layer, modelName) {
+            const fields = layer.summaryStatistics?.fields ?? [];
+            const lowerCaseModelName = modelName.toLowerCase();
+            return (
+                fields.find((field) => field.modelName?.toLowerCase() === lowerCaseModelName) ?? null
+            );
+        }
+
+        function throwIfAborted(signal) {
+            if (signal?.aborted) throw new Error();
+        }
+    </script>
+</body>
+
+</html>

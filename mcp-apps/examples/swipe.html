@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Swipe component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body class="calcite-mode-dark">
+    <arcgis-map zoom="15" center="-154.88, 19.46">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-swipe position="32"></arcgis-swipe>
+      <arcgis-expand slot="top-right">
+        <arcgis-layer-list></arcgis-layer-list>
+      </arcgis-expand>
+    </arcgis-map>
+
+    <script type="module">
+      const [Map, TileLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/TileLayer.js",
+      ]);
+
+      const arcgisSwipe = document.querySelector("arcgis-swipe");
+      const viewElement = document.querySelector("arcgis-map");
+      const infrared = new TileLayer({
+        url: "https://tiles.arcgis.com/tiles/P3ePLMYs2RVChkJx/arcgis/rest/services/WV03_Kilauea_20180519_ShortwaveInfrared/MapServer",
+        maxScale: 3000,
+      });
+      const nearInfrared = new TileLayer({
+        url: "https://tiles.arcgis.com/tiles/P3ePLMYs2RVChkJx/arcgis/rest/services/WV03_Kilauea_20180519_NearInfrared/MapServer",
+        maxScale: 3000,
+      });
+      // create the map with layers
+      viewElement.map = new Map({
+        basemap: "satellite",
+        layers: [infrared, nearInfrared],
+      });
+      // wait for swipe to be ready, then add the leading and trailing layers
+      arcgisSwipe.addEventListener("arcgisPropertyChange", (e) => {
+        if (e.detail.name === "state" && arcgisSwipe.state === "ready") {
+          arcgisSwipe.startLayers.add(infrared);
+          arcgisSwipe.endLayers.add(nearInfrared);
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Daylight component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #infoDiv {
+        max-width: 365px;
+        padding: var(--calcite-spacing-md);
+
+        font-family: var(--calcite-font-family);
+        color: var(--calcite-color-text-2);
+        background: var(--calcite-color-foreground-1);
+        font-size: var(--calcite-font-size-sm);
+
+        & > * {
+          margin: 0;
+        }
+      }
+
+      #bottom-panel {
+        position: absolute;
+        width: 100%;
+        inset-inline: 0;
+        inset-block-end: 20px;
+
+        display: flex;
+        place-content: center;
+        place-items: center;
+
+        pointer-events: none;
+
+        & > * {
+          pointer-events: auto;
+        }
+      }
+
+      calcite-segmented-control-item {
+        width: 230px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="4d1bf07e832e4c4e9ef306291e6c5d56">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <div id="infoDiv" slot="top-right">
+        <p>
+          Use the sun position checkbox to illuminate the scene either by date and time or by
+          virtual light (relative to camera).
+        </p>
+      </div>
+      <arcgis-expand slot="top-right" expanded>
+        <arcgis-daylight hide-timezone play-speed-multiplier="2"></arcgis-daylight>
+      </arcgis-expand>
+      <div id="bottom-panel">
+        <calcite-segmented-control id="selection" disabled>
+          <calcite-segmented-control-item value="city" checked
+            >City view (sunlight)</calcite-segmented-control-item
+          >
+          <calcite-segmented-control-item value="global"
+            >Global view (virtual light)</calcite-segmented-control-item
+          >
+        </calcite-segmented-control>
+      </div>
+    </arcgis-scene>
+
+    <script type="module">
+      // Get a reference to the HTML elements
+      const viewElement = document.querySelector("arcgis-scene");
+      const daylight = document.querySelector("arcgis-daylight");
+      const selection = document.querySelector("#selection");
+
+      // Wait for the view to initialize
+      await viewElement.viewOnReady();
+
+      // General camera settings
+      const camera = {
+        city: {
+          position: {
+            longitude: -4.49292254,
+            latitude: 48.38118005,
+            z: 29.41383,
+          },
+          heading: 250.18,
+          tilt: 87.91,
+        },
+        global: {
+          position: {
+            longitude: 27.05453608,
+            latitude: 54.53236102,
+            z: 10825172.372,
+          },
+          heading: 357.3,
+          tilt: 0.19,
+        },
+      };
+
+      selection.addEventListener("calciteSegmentedControlChange", () => {
+        const selected = selection.value;
+
+        switch (selected) {
+          case "city":
+            setCityView();
+            break;
+          case "global":
+            setGlobalView();
+            break;
+        }
+      });
+
+      function setCityView() {
+        // Use the sun position on a set date and time to illuminate the scene
+        daylight.sunlightingDisabled = false;
+        // Hide timezone picker - for a city view the timezone is not relevant
+        daylight.hideTimezone = true;
+        // Change the viewpoint
+        viewElement.camera = camera.city;
+      }
+
+      function setGlobalView() {
+        // Ignore the sun position and use virtual lighting to illuminate the scene
+        daylight.sunlightingDisabled = true;
+        // Show timezone picker - for a global view the timezone can be relevant (Note: only applied when the sunlighting enabled)
+        daylight.hideTimezone = false;
+        // Change the viewpoint
+        viewElement.camera = camera.global;
+      }
+
+      selection.disabled = false;
+    </script>
+  </body>
+</html>

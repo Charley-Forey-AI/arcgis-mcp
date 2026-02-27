@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Changing Versions with the VersionManagementService | Sample | ArcGIS Maps SDK for JavaScript</title>
+    <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css" />
+    <style>
+      html,
+      body,
+      #viewDiv {
+        height: 100%;
+        margin: 0;
+      }
+      calcite-list-item {
+        width: 275px;
+        padding: 0.5px;
+        display: "block";
+      }
+      #menu-text {
+        text-align: left;
+        padding-left: 18px;
+      }
+    </style>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <script type="module">
+      const [MapView, Expand, FeatureLayer, VersionManagementService, Map] = await $arcgis.import([
+        "@arcgis/core/views/MapView.js",
+        "@arcgis/core/widgets/Expand.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/versionManagement/VersionManagementService.js",
+        "@arcgis/core/Map.js",
+      ]);
+
+      // Credentials to signin:
+      // username: viewer01
+      // password: I68VGU^nMurF
+
+      // Initialize VersionManagementService
+      const currentVMS = new VersionManagementService({
+        url: "https://sampleserver7.arcgisonline.com/server/rest/services/US_Cities_Branch/VersionManagementServer",
+      });
+      // Initialize FeatureLayer
+      const featureLayer = new FeatureLayer({
+        url: "https://sampleserver7.arcgisonline.com/server/rest/services/US_Cities_Branch/FeatureServer/1",
+      });
+
+      // Initializing map
+      const map = new Map({
+        basemap: "topo-vector",
+        layers: [featureLayer],
+      });
+
+      // UI element for holding list of versions.
+      const versionList = document.getElementById("versionListEl");
+
+      // Initialize the view
+      const view = new MapView({
+        container: "viewDiv",
+        map: map,
+        extent: {
+          xmin: -126.902,
+          ymin: 13.848,
+          xmax: -65.73,
+          ymax: 50.15,
+        },
+      });
+
+      //Handle View
+      view.when(async function () {
+        await currentVMS.load();
+        currentVersionIdentifier = currentVMS.defaultVersionIdentifier;
+        // Getting available versions
+        versions = await currentVMS.getVersionInfos();
+        await displayVersionsInPanel(versions);
+        versionMenuExpand.expanded = true;
+      });
+      let currentVersionIdentifier = null;
+
+      // Initialize UI
+      const versionMenuExpand = new Expand({
+        view: view,
+        content: document.getElementById("panel"),
+        expanded: false,
+      });
+      view.ui.add(versionMenuExpand, "top-left");
+
+      // Methods
+      function displayVersionsInPanel(versions) {
+        versionList.textContent = "";
+        versions.forEach((item) => {
+          const { versionIdentifier } = item;
+          const listItem = document.createElement("calcite-list-item");
+          listItem.label = versionIdentifier.name;
+          listItem.value = versionIdentifier.name;
+          versionList.append(listItem);
+
+          if (currentVMS.defaultVersionIdentifier.name === versionIdentifier.name) {
+            listItem.selected = true;
+            currentVersion = currentVMS.defaultVersionIdentifier;
+          }
+        });
+        originalVersionList = [...versionList.children];
+      }
+      versionList.addEventListener("calciteListChange", handleVersionChange);
+
+      async function handleVersionChange(evt) {
+        const { selectedItems } = evt.target;
+        const newVersionIdentifier = await currentVMS.getVersionIdentifierFromName(
+          selectedItems[0].value,
+        );
+        const featureLayerList = [featureLayer];
+        changeVersion(featureLayerList, newVersionIdentifier, currentVersionIdentifier);
+      }
+
+      async function changeVersion(featureLayerList, newVersion, currentVersion) {
+        await currentVMS.changeVersion(featureLayerList, currentVersion, newVersion);
+        currentVersionIdentifier = newVersion;
+      }
+    </script>
+  </head>
+  <body>
+    <calcite-panel id="panel" heading="Change Version">
+      <p id="menu-text">
+        Select an item from the list below to <br />
+        change the version of the layer in the map
+      </p>
+      <calcite-list id="versionListEl" selection-mode="single"></calcite-list>
+    </calcite-panel>
+    <div id="viewDiv"></div>
+  </body>
+</html>

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Clusters as pie charts | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map item-id="433b5f7f524a4d1ebf3a9f8e1bd49ee0">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-home slot="top-left"></arcgis-home>
+      <arcgis-expand slot="top-left" expand-icon="list-bullet">
+        <arcgis-legend legend-style="classic"></arcgis-legend>
+      </arcgis-expand>
+    </arcgis-map>
+
+    <script type="module">
+      const [WebMap, clusterLabelCreator, pieChartRendererCreator] = await $arcgis.import([
+        "@arcgis/core/WebMap.js",
+        "@arcgis/core/smartMapping/labels/clusters.js",
+        "@arcgis/core/smartMapping/renderers/pieChart.js",
+      ]);
+
+      // get the arcgis-map component element and constraints
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.constraints = {
+        snapToZoom: false,
+      };
+
+      await viewElement.viewOnReady();
+      const layer = viewElement.map.layers.getItemAt(0);
+      layer.effect = "drop-shadow(2px, 2px, 2px, gray)";
+
+      await layer.when();
+      const featureReduction = await generateClusterConfig(layer);
+      layer.featureReduction = featureReduction;
+
+      async function generateClusterConfig(layer) {
+        // generates default labelingInfo
+        const { labelingInfo, clusterMinSize } = await clusterLabelCreator
+          .getLabelSchemes({ layer, view: viewElement.view })
+          .then((labelSchemes) => labelSchemes.primaryScheme);
+
+        const labelSymbol = labelingInfo[0].symbol;
+        labelSymbol.color = labelSymbol.haloColor.clone();
+        labelSymbol.haloColor = [255, 255, 255, 0.3];
+        labelSymbol.font.size = 10;
+        const { renderer, fields } = await pieChartRendererCreator.createRendererForClustering({
+          layer,
+          shape: "donut",
+        });
+        renderer.holePercentage = 0.66;
+
+        const fieldInfos = fields.map((field) => {
+          return {
+            fieldName: field.name,
+            label: field.alias,
+            format: {
+              places: 0,
+              digitSeparator: true,
+            },
+          };
+        });
+
+        // maps the field names for the popup chart
+        const fieldNames = fieldInfos.map((field) => {
+          return field.fieldName;
+        });
+
+        const popupTemplate = {
+          content: [
+            {
+              type: "text",
+              text: "This cluster represents <b>{cluster_count}</b> features.",
+            },
+            {
+              type: "media",
+              mediaInfos: [
+                {
+                  title: "311 Reports",
+                  type: "pie-chart",
+                  value: {
+                    fields: fieldNames,
+                  },
+                },
+              ],
+            },
+            {
+              type: "fields",
+            },
+          ],
+          fieldInfos,
+        };
+
+        return {
+          type: "cluster",
+          popupTemplate,
+          labelingInfo,
+          clusterMinSize,
+          fields,
+          renderer,
+        };
+      }
+    </script>
+  </body>
+</html>

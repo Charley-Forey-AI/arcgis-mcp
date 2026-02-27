@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>ImageryTileLayer with COG | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"></script>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #info-card {
+        min-width: 326px;
+      }
+
+      calcite-loader {
+        --calcite-loader-size: 1em;
+        --calcite-loader-spacing: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map basemap="topo-vector">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <calcite-card id="info-card" slot="top-right">
+        <div slot="heading">
+          <calcite-label
+            >Change band compositions
+            <calcite-select id="band-ids-select">
+              <calcite-option value="3,2,1" selected>4,3,2 - Natural color</calcite-option>
+              <calcite-option value="6,5,3">7,6,4 - Short-wave infrared</calcite-option>
+              <calcite-option value="4,3,2">5,4,3 - Color infrared</calcite-option>
+              <calcite-option value="5,4,1">6,5,2 - Agriculture</calcite-option>
+              <calcite-option value="3,2,0">4,3,1 - Bathymetric</calcite-option>
+              <calcite-option value="6,5,1">7,6,2 - Geology</calcite-option>
+            </calcite-select>
+          </calcite-label>
+
+          <span id="click-image-span">Click on the image for more info</span>
+
+          <div id="ndvi-div" hidden>
+            <span>NDVI value:</span>
+            <b id="ndvi-value-element"></b>
+            <calcite-loader label="Loading chart." type="indeterminate" hidden></calcite-loader>
+          </div>
+        </div>
+
+        <div id="chart-div" slot="description" hidden>
+          <canvas id="spectral-chart" height="300"></canvas>
+        </div>
+      </calcite-card>
+    </arcgis-map>
+
+    <script type="module">
+      const [ImageryTileLayer, Graphic] = await $arcgis.import([
+        "@arcgis/core/layers/ImageryTileLayer.js",
+        "@arcgis/core/Graphic.js",
+      ]);
+
+      let spectralChart;
+
+      const viewElement = document.querySelector("arcgis-map");
+      const bandIdsSelect = document.getElementById("band-ids-select");
+      const clickImageSpan = document.getElementById("click-image-span");
+      const ndviDiv = document.getElementById("ndvi-div");
+      const ndviValueElement = document.getElementById("ndvi-value-element");
+      const spinner = document.querySelector("calcite-loader");
+      const chartDiv = document.getElementById("chart-div");
+      const spectralCanvas = document.getElementById("spectral-chart");
+      await viewElement.componentOnReady(); // Wait for property methods to be ready.
+      const url =
+        "https://ss6imagery.arcgisonline.com/imagery_sample/landsat8/Bolivia_LC08_L1TP_001069_20190719_MS.tiff";
+      const layer = new ImageryTileLayer({ url, bandIds: [3, 2, 1] });
+      viewElement.map.add(layer);
+      await viewElement.whenLayerView(layer); // Wait for the layer to load fully.
+      await viewElement.goTo(layer.fullExtent); // Zoom to the layer's full extent.
+      bandIdsSelect.addEventListener("calciteSelectChange", () => {
+        // Convert comma-separated IDs to numbers.
+        const bands = bandIdsSelect.value.split(",").map((id) => +id);
+        layer.bandIds = bands; // Update Landsat 8 band ID combination.
+      });
+      const pointGraphic = new Graphic({ symbol: { type: "simple-marker", color: "cyan" } });
+      viewElement.graphics.add(pointGraphic);
+
+      const handleLoadingUX = (isLoading = true) => {
+        if (isLoading) ndviValueElement.textContent = "";
+        spinner.style.display = isLoading ? "inline-block" : "none";
+      };
+
+      const handleOutOfBounds = () => {
+        ndviValueElement.textContent = "⚠️ Click inside the image bounds.";
+        pointGraphic.geometry = null;
+        spectralChart.data.datasets[0].data = [];
+        spectralChart.update("none");
+        handleLoadingUX(false);
+      };
+      viewElement.addEventListener("arcgisViewClick", async ({ detail: { mapPoint } }) => {
+        // Show the chart and NDVI elements upon first interaction.
+        if (chartDiv.hidden) chartDiv.removeAttribute("hidden");
+        if (ndviDiv.hidden) ndviDiv.removeAttribute("hidden");
+        if (!clickImageSpan.hidden) clickImageSpan.hidden = true;
+
+        // Set clicked location on the map and show loading state.
+        pointGraphic.geometry = mapPoint;
+        handleLoadingUX();
+
+        // Get spectral values at the clicked location.
+        const results = await layer.identify(mapPoint);
+        if (!results.value) {
+          handleOutOfBounds();
+          return;
+        }
+        handleLoadingUX(false);
+
+        // Extract red and NIR bands, calculate NDVI, and display the value.
+        const { 3: redBand, 4: nearInfraredBand } = results.value;
+        const ndvi = (nearInfraredBand - redBand) / (nearInfraredBand + redBand);
+        ndviValueElement.textContent = ndvi.toFixed(3);
+
+        // Update and refresh the spectral chart with the new data.
+        spectralChart.data.datasets[0].data = results.value;
+        spectralChart.update();
+      });
+      const visibleBandLabels = ["Coastal - 0.45", "Blue - 0.51", "Green - 0.59", "Red - 0.67"];
+      const infraredBandLabels = ["NI - 0.88", "SWI1 - 1.65", "SWI2 - 2.229", "Cirrus - 1.38"];
+      spectralChart = new Chart(spectralCanvas, {
+        type: "line",
+        data: {
+          labels: [...visibleBandLabels, ...infraredBandLabels],
+          datasets: [{ borderColor: "rgb(75, 192, 192)", tension: 0.1 }],
+        },
+        options: {
+          scales: {
+            y: { title: { display: true, text: "DN" } },
+            x: { title: { display: true, text: "Band Ids - wavelength (micrometer)" } },
+          },
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: "Spectral profile" },
+          },
+        },
+      });
+    </script>
+  </body>
+</html>

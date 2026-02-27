@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Multiply blendMode | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css" />
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <script type="module">
+      const [Map, MapView, FeatureLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/views/MapView.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+      ]);
+
+      // Multiply blend mode emphasizes the darkest parts of overlapping layers
+      // by multiplying colors of the top layer and the background layer.
+      // apply multiply blend mode to show the dark labels of the basemap
+      // to show through the featurelayer.
+      const layer = new FeatureLayer({
+        url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/ACS_Housing_Tenure_by_Heating_Fuel_Boundaries/FeatureServer/1",
+        minScale: 0,
+        blendMode: "multiply", // darken, tint also can be applied
+      });
+
+      const map = new Map({
+        basemap: {
+          portalItem: {
+            id: "75a3ce8990674a5ebd5b9ab66bdab893", //newspaper vector tiles style
+          },
+        },
+        layers: [layer],
+      });
+
+      const view = new MapView({
+        container: "viewDiv",
+        map: map,
+        zoom: 4,
+        center: [-98, 38],
+      });
+    </script>
+  </head>
+  <body>
+    <div id="viewDiv"></div>
+  </body>
+</html>

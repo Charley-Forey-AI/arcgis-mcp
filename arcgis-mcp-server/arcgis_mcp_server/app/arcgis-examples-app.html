@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArcGIS Examples</title>
+  <script type="module" src="https://js.arcgis.com/5.0/"></script>
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    #root { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+    #toolbar { border-bottom: 1px solid #eee; padding: 10px 12px; display: flex; gap: 8px; align-items: center; }
+    #status { color: #666; font-size: 12px; }
+    #content { position: relative; min-height: 0; }
+    .pad { padding: 16px; }
+    .muted { color: #666; }
+    #sceneHost, #assistantHost { width: 100%; height: 100%; display: none; }
+    #assistantHost calcite-card { margin: 1rem; }
+    #assistantHost span { font-size: 1rem; }
+    #info {
+      padding: 1em;
+      max-width: 300px;
+      box-sizing: border-box;
+      color: var(--calcite-color-text-2);
+      background-color: var(--calcite-color-foreground-1);
+      font-size: var(--calcite-font-size);
+      line-height: 1.3em;
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div id="toolbar">
+      <strong>ArcGIS Examples</strong>
+      <button id="openArea" type="button">Area Measurement</button>
+      <button id="openAi" type="button">AI Assistant</button>
+      <div id="status"></div>
+    </div>
+    <div id="content">
+      <div id="placeholder" class="pad">
+        <h3>Choose an example</h3>
+        <p class="muted">Call <code>open_example_app</code> from the agent or use the buttons above.</p>
+      </div>
+
+      <div id="assistantHost">
+        <calcite-shell>
+          <calcite-card>
+            <span>
+              <b>This sample is coming soon! Please check back later for updates.</b>
+              AI components (beta) rely on ArcGIS Online services that are not yet available.
+              The components are included in 5.0, but require ArcGIS Online support.
+            </span>
+          </calcite-card>
+        </calcite-shell>
+      </div>
+
+      <arcgis-scene id="sceneHost" item-id="340f87d4f3ef4184b04bcd76261cdf9c">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+        <arcgis-compass slot="top-left"></arcgis-compass>
+        <div id="info" slot="top-right">Click on a parcel polygon to display its area and perimeter.</div>
+      </arcgis-scene>
+    </div>
+  </div>
+
+  <script type="module">
+    (async function () {
+      const { App } = await import("https://esm.sh/@modelcontextprotocol/ext-apps");
+      const app = new App({ name: "ArcGIS Examples", version: "1.0.0" });
+      const statusEl = document.getElementById("status");
+      const placeholder = document.getElementById("placeholder");
+      const sceneHost = document.getElementById("sceneHost");
+      const assistantHost = document.getElementById("assistantHost");
+      let areaWired = false;
+
+      async function ensureAreaWired() {
+        if (areaWired) return;
+        areaWired = true;
+        await sceneHost.viewOnReady();
+        const [AreaMeasurementAnalysis] = await $arcgis.import(["@arcgis/core/analysis/AreaMeasurementAnalysis.js"]);
+        let hitTestLayers = null;
+        await sceneHost.viewOnReady(async () => {
+          hitTestLayers = sceneHost.map.layers.filter((layer) => layer.title === "Parcels");
+        });
+        const areaMeasurementAnalysis = new AreaMeasurementAnalysis();
+        sceneHost.analyses.add(areaMeasurementAnalysis);
+        sceneHost.addEventListener("arcgisViewClick", async (event) => {
+          areaMeasurementAnalysis.geometry = null;
+          const hitTestResult = await sceneHost.hitTest(event.detail, { include: hitTestLayers });
+          if (!hitTestResult.results.length) return;
+          const geometry = hitTestResult.results[0].graphic.geometry;
+          areaMeasurementAnalysis.geometry = geometry;
+          sceneHost.goTo(geometry);
+        });
+      }
+
+      async function showExample(name) {
+        const n = String(name || "").trim().toLowerCase();
+        placeholder.style.display = "none";
+        sceneHost.style.display = "none";
+        assistantHost.style.display = "none";
+        if (n === "analysis-area-measurement" || n === "area-measurement") {
+          sceneHost.style.display = "block";
+          statusEl.textContent = "Area measurement example";
+          await ensureAreaWired();
+          return;
+        }
+        if (n === "ai-assistant" || n === "assistant") {
+          assistantHost.style.display = "block";
+          statusEl.textContent = "AI assistant example";
+          return;
+        }
+        placeholder.style.display = "block";
+        statusEl.textContent = "Unknown example: " + n;
+      }
+
+      function parseToolPayload(payload) {
+        if (!payload) return null;
+        if (payload.arguments && typeof payload.arguments === "object") return payload.arguments;
+        if (payload.content && payload.content[0] && payload.content[0].type === "text") {
+          try { return JSON.parse(payload.content[0].text); } catch (_) { return null; }
+        }
+        return null;
+      }
+
+      document.getElementById("openArea").addEventListener("click", () => showExample("analysis-area-measurement").catch(console.warn));
+      document.getElementById("openAi").addEventListener("click", () => showExample("ai-assistant").catch(console.warn));
+
+      app.ontoolinput = (payload) => {
+        const args = parseToolPayload(payload) || {};
+        if (args.name) showExample(args.name).catch(console.warn);
+      };
+      app.ontoolresult = (payload) => {
+        const data = parseToolPayload(payload) || {};
+        if (data.name) showExample(data.name).catch(console.warn);
+      };
+      app.onerror = (err) => console.error("[ArcGIS Examples App]", err);
+      app.connect();
+    })();
+  </script>
+</body>
+</html>
+

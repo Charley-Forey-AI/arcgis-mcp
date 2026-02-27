@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArcGIS Map</title>
+  <!-- ArcGIS Maps SDK for JavaScript from CDN -->
+  <script type="module" src="https://js.arcgis.com/5.0/"></script>
+  <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css">
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #arcgis-map { min-height: 100%; }
+    #map-loading { position: fixed; inset: 0; background: #f5f5f5; display: flex; align-items: center; justify-content: center; z-index: 9999; font-family: sans-serif; }
+    #map-route-summary { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.75); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 14px; z-index: 1000; display: none; }
+  </style>
+</head>
+<body>
+  <div id="map-loading" aria-live="polite">Loading map…</div>
+  <div id="map-route-summary" role="status"></div>
+  <div id="map-error" role="alert" style="position:fixed;top:12px;left:50%;transform:translateX(-50%);max-width:min(900px,calc(100vw - 24px));background:rgba(160,0,0,0.92);color:#fff;padding:8px 12px;border-radius:8px;font-size:14px;z-index:2500;display:none;font-family:sans-serif;"></div>
+  <div id="map-controls" style="position:fixed;top:12px;left:12px;z-index:2000;display:flex;gap:8px;">
+    <button id="toggle-view" type="button" style="padding:6px 10px;border-radius:8px;border:1px solid #ccc;background:#fff;cursor:pointer;font:14px sans-serif;">3D</button>
+    <button id="toggle-terrain" type="button" style="padding:6px 10px;border-radius:8px;border:1px solid #ccc;background:#fff;cursor:pointer;font:14px sans-serif;">Terrain</button>
+  </div>
+  <arcgis-map id="arcgis-map" basemap="streets" style="width:100%;height:100%;" aria-label="Map">
+    <arcgis-zoom slot="top-left"></arcgis-zoom>
+    <arcgis-search slot="top-right"></arcgis-search>
+    <arcgis-scale-bar slot="bottom-left"></arcgis-scale-bar>
+    <arcgis-basemap-toggle slot="bottom-right"></arcgis-basemap-toggle>
+  </arcgis-map>
+  <arcgis-scene id="arcgis-scene" basemap="streets" style="width:100%;height:100%;display:none;" aria-label="3D Scene">
+    <arcgis-zoom slot="top-left"></arcgis-zoom>
+    <arcgis-search slot="top-right"></arcgis-search>
+    <arcgis-scale-bar slot="bottom-left"></arcgis-scale-bar>
+    <arcgis-basemap-toggle slot="bottom-right"></arcgis-basemap-toggle>
+  </arcgis-scene>
+  <script type="module">
+    (async function () {
+      const MAP_URI = "ui://arcgis-map/mcp-app.html";
+
+      // Wait for ArcGIS map custom element to be defined
+      await customElements.whenDefined("arcgis-map");
+      const mapEl = document.getElementById("arcgis-map");
+      const sceneEl = document.getElementById("arcgis-scene");
+      // arcgis-scene may not be available in all environments; don't hang waiting for it
+      await Promise.race([customElements.whenDefined("arcgis-scene"), new Promise(r => setTimeout(r, 1000))]);
+      await mapEl.viewOnReady();
+      if (sceneEl) { try { await sceneEl.viewOnReady(); } catch (_) {} }
+      const loadingEl = document.getElementById("map-loading");
+      if (loadingEl) loadingEl.style.display = "none";
+
+      // Load MCP App bridge from CDN
+      const { App } = await import("https://esm.sh/@modelcontextprotocol/ext-apps");
+      const app = new App({ name: "ArcGIS Map", version: "1.0.0" });
+
+      const arcgis = globalThis.$arcgis || (typeof window !== "undefined" && window.$arcgis);
+      if (!arcgis) throw new Error("ArcGIS SDK not loaded");
+      let graphicsLayer = null;
+      let _opLayers = [];
+      let _overlayLayers = [];
+      let _groundLayer = null;
+      const Graphic = await arcgis.import("@arcgis/core/Graphic.js");
+      const Point = await arcgis.import("@arcgis/core/geometry/Point.js");
+      const Polyline = await arcgis.import("@arcgis/core/geometry/Polyline.js");
+      const SimpleMarkerSymbol = await arcgis.import("@arcgis/core/symbols/SimpleMarkerSymbol.js");
+      const SimpleLineSymbol = await arcgis.import("@arcgis/core/symbols/SimpleLineSymbol.js");
+      const SpatialReference = await arcgis.import("@arcgis/core/geometry/SpatialReference.js");
+      const Layer = await arcgis.import("@arcgis/core/layers/Layer.js");
+      const FeatureLayer = await arcgis.import("@arcgis/core/layers/FeatureLayer.js");
+      const TileLayer = await arcgis.import("@arcgis/core/layers/TileLayer.js");
+      const ElevationLayer = await arcgis.import("@arcgis/core/layers/ElevationLayer.js");
+
+      const toggleViewBtn = document.getElementById("toggle-view");
+      const toggleTerrainBtn = document.getElementById("toggle-terrain");
+      const errorEl = document.getElementById("map-error");
+      let _lastState = null;
+
+      function showError(stateOrMessage) {
+        if (!errorEl) return;
+        let msg = "";
+        if (stateOrMessage && typeof stateOrMessage === "object") {
+          const e = stateOrMessage.error ? String(stateOrMessage.error) : "";
+          const h = stateOrMessage.hint ? String(stateOrMessage.hint) : "";
+          msg = e + (h ? (" — " + h) : "");
+        } else {
+          msg = stateOrMessage ? String(stateOrMessage) : "";
+        }
+        if (!msg) { errorEl.style.display = "none"; errorEl.textContent = ""; return; }
+        errorEl.textContent = msg;
+        errorEl.style.display = "block";
+      }
+
+      function hideError() {
+        if (!errorEl) return;
+        errorEl.style.display = "none";
+        errorEl.textContent = "";
+      }
+
+      function isFiniteNumber(x) {
+        return typeof x === "number" && Number.isFinite(x);
+      }
+
+      function isValidLonLat(lon, lat) {
+        return isFiniteNumber(lon) && isFiniteNumber(lat) && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90;
+      }
+
+      function normalizeLonLat(lonRaw, latRaw) {
+        const lon = Number(lonRaw);
+        const lat = Number(latRaw);
+        if (isValidLonLat(lon, lat)) return { lon, lat, swapped: false };
+        if (isValidLonLat(lat, lon)) return { lon: lat, lat: lon, swapped: true };
+        return null;
+      }
+
+      function getActiveEl(state) {
+        const mode = (state && state.viewMode) ? String(state.viewMode).toLowerCase() : "2d";
+        if (mode === "3d" && sceneEl) {
+          sceneEl.style.display = "block";
+          mapEl.style.display = "none";
+          return sceneEl;
+        }
+        mapEl.style.display = "block";
+        if (sceneEl) sceneEl.style.display = "none";
+        return mapEl;
+      }
+
+      function getGraphicsLayer(activeEl) {
+        if (!graphicsLayer) {
+          graphicsLayer = activeEl.graphics;
+        }
+        return graphicsLayer;
+      }
+
+      function clearGraphics(activeEl) {
+        const layer = getGraphicsLayer(activeEl);
+        if (layer && layer.length) layer.removeAll();
+      }
+
+      async function clearOperationalLayers(activeEl) {
+        if (!activeEl.map) return;
+        for (const lyr of _opLayers) {
+          try { activeEl.map.layers.remove(lyr); } catch (_) {}
+        }
+        _opLayers = [];
+      }
+
+      async function applyLayerEntry(activeEl, entry) {
+        if (!entry || typeof entry !== "object" || !activeEl.map) return null;
+        const src = (entry.source && typeof entry.source === "object") ? entry.source : entry;
+        const itemId = (src.item_id || src.itemId || "").toString().trim();
+        const idxRaw = src.layer_index != null ? src.layer_index : (src.layerId != null ? src.layerId : null);
+        const idx = (idxRaw != null && idxRaw !== "") ? Number(idxRaw) : null;
+        const urlRaw = (src.url || "").toString().trim();
+        let layer = null;
+        if (itemId) {
+          layer = await Layer.fromPortalItem({
+            portalItem: { id: itemId },
+            layerId: idx != null && !Number.isNaN(idx) ? idx : undefined,
+          });
+        } else if (urlRaw) {
+          let url = urlRaw;
+          if (idx != null && !Number.isNaN(idx)) {
+            if (/\/(FeatureServer|MapServer|ImageServer|VectorTileServer)\/?$/i.test(url)) {
+              url = url.replace(/\/+$/, "") + "/" + String(idx);
+            }
+          }
+          if (/\/FeatureServer\/\d+\/?$/i.test(url)) {
+            layer = new FeatureLayer({ url });
+          } else {
+            layer = await Layer.fromArcGISServerUrl({ url });
+          }
+        }
+        if (!layer) return null;
+
+        try {
+          if (entry.opacity != null) {
+            const op = Number(entry.opacity);
+            if (!Number.isNaN(op)) layer.opacity = Math.max(0, Math.min(1, op));
+          }
+        } catch (_) {}
+        try { if (entry.definitionExpression && ("definitionExpression" in layer)) layer.definitionExpression = String(entry.definitionExpression); } catch (_) {}
+        try { if (entry.outFields != null && ("outFields" in layer)) layer.outFields = entry.outFields; } catch (_) {}
+        try { if (entry.renderer && ("renderer" in layer)) layer.renderer = entry.renderer; } catch (_) {}
+        try {
+          if (entry.labelingInfo && ("labelingInfo" in layer)) {
+            layer.labelingInfo = Array.isArray(entry.labelingInfo) ? entry.labelingInfo : [entry.labelingInfo];
+            layer.labelsVisible = true;
+          }
+        } catch (_) {}
+        try { if (entry.featureReduction && ("featureReduction" in layer)) layer.featureReduction = entry.featureReduction; } catch (_) {}
+        try { if (entry.elevationInfo && ("elevationInfo" in layer)) layer.elevationInfo = entry.elevationInfo; } catch (_) {}
+        try { if (entry.popupTemplate && ("popupTemplate" in layer)) layer.popupTemplate = entry.popupTemplate; } catch (_) {}
+        // Default popups: many services have no displayField, so clicks look like "no metadata"
+        try {
+          if (("popupEnabled" in layer)) layer.popupEnabled = true;
+          if (!entry.popupTemplate && ("popupTemplate" in layer) && !layer.popupTemplate) {
+            layer.popupTemplate = { title: "Feature", content: "{*}" };
+          }
+        } catch (_) {}
+        // Ensure attributes are available for popups
+        try {
+          if (entry.outFields == null && ("outFields" in layer) && (!layer.outFields || !layer.outFields.length)) {
+            layer.outFields = ["*"];
+          }
+        } catch (_) {}
+
+        return layer;
+      }
+
+      async function applyOperationalLayers(activeEl, state) {
+        if (!activeEl.map) return;
+        await clearOperationalLayers(activeEl);
+        const entries = Array.isArray(state.layers) ? state.layers : (state.layer ? [state.layer] : []);
+        if (!entries.length) return;
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          try {
+            const lyr = await applyLayerEntry(activeEl, entry);
+            if (!lyr) continue;
+            activeEl.map.layers.add(lyr, i);
+            _opLayers.push(lyr);
+          } catch (e) {
+            console.warn("[ArcGIS Map App] Could not load layer entry:", entry, e);
+          }
+        }
+      }
+
+      function applyGraphicsFromState(activeEl, state) {
+        const layer = getGraphicsLayer(activeEl);
+        if (!layer) return;
+        if (!Array.isArray(state.graphics) || !state.graphics.length) return;
+        for (const g of state.graphics) {
+          if (!g || typeof g !== "object") continue;
+          const geom = g.geometry && typeof g.geometry === "object" ? g.geometry : null;
+          if (!geom) continue;
+          if (!geom.spatialReference) geom.spatialReference = { wkid: 4326 };
+          layer.add(new Graphic({
+            geometry: geom,
+            symbol: (g.symbol && typeof g.symbol === "object") ? g.symbol : undefined,
+            attributes: (g.attributes && typeof g.attributes === "object") ? g.attributes : undefined,
+            popupTemplate: (g.popupTemplate && typeof g.popupTemplate === "object") ? g.popupTemplate : undefined,
+          }));
+        }
+      }
+
+      async function clearOverlays(activeEl) {
+        if (!activeEl.map) return;
+        for (const lyr of _overlayLayers) {
+          try { activeEl.map.layers.remove(lyr); } catch (_) {}
+        }
+        _overlayLayers = [];
+      }
+
+      async function applyOverlays(activeEl, overlays) {
+        if (!activeEl.map) return;
+        await clearOverlays(activeEl);
+        if (!Array.isArray(overlays) || !overlays.length) return;
+        for (const o of overlays) {
+          if (!o || typeof o !== "object") continue;
+          const type = (o.type || "").toString().toLowerCase();
+          const url = (o.url || "").toString();
+          if (!type || !url) continue;
+          try {
+            let lyr = null;
+            if (type === "tile") {
+              lyr = new TileLayer({ url });
+            } else {
+              // Best-effort: pick a layer type based on URL
+              if (/\/FeatureServer\/\d+\/?$/i.test(url)) {
+                lyr = new FeatureLayer({ url });
+              } else {
+                lyr = await Layer.fromArcGISServerUrl({ url });
+              }
+            }
+            if (!lyr) continue;
+            if (o.opacity != null) {
+              const op = Number(o.opacity);
+              if (!Number.isNaN(op)) lyr.opacity = Math.max(0, Math.min(1, op));
+            }
+            activeEl.map.layers.add(lyr);
+            _overlayLayers.push(lyr);
+          } catch (e) {
+            console.warn("[ArcGIS Map App] Could not load overlay:", o, e);
+          }
+        }
+      }
+
+      async function applyGround(activeEl, state) {
+        if (!activeEl.map) return;
+        const mode = (state && state.viewMode) ? String(state.viewMode).toLowerCase() : "2d";
+        if (mode !== "3d") return;
+        const groundCfg = (state && typeof state.ground === "object" && state.ground) ? state.ground : {};
+        const url = (groundCfg.elevationUrl || groundCfg.url || "").toString().trim();
+        const elevationUrl = url || "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer";
+        try {
+          if (_groundLayer) {
+            activeEl.map.ground.layers.remove(_groundLayer);
+            _groundLayer = null;
+          }
+          const el = new ElevationLayer({ url: elevationUrl });
+          activeEl.map.ground.layers.add(el);
+          _groundLayer = el;
+        } catch (e) {
+          console.warn("[ArcGIS Map App] Could not set ground elevation:", e);
+        }
+      }
+
+      async function applyMapState(state) {
+        if (!state) return;
+        _lastState = state;
+        const activeEl = getActiveEl(state);
+        if (!activeEl || !activeEl.view) return;
+        const view = activeEl.view;
+        graphicsLayer = null;
+        if (state.error) {
+          showError(state);
+          return;
+        }
+        hideError();
+        if (state.basemapId) {
+          try { activeEl.basemap = state.basemapId; } catch (_) {}
+        }
+        await applyGround(activeEl, state);
+        if (state.overlays) await applyOverlays(activeEl, state.overlays);
+        await applyOperationalLayers(activeEl, state);
+        if (state.center && state.center.longitude != null && state.center.latitude != null) {
+          const n = normalizeLonLat(Number(state.center.longitude), Number(state.center.latitude));
+          if (n) {
+            view.center = [n.lon, n.lat];
+          } else {
+            showError({ error: "Invalid map center coordinates.", hint: "Expected [longitude, latitude]." });
+          }
+        }
+        if (state.zoom != null) {
+          const z = Number(state.zoom);
+          if (Number.isFinite(z)) view.zoom = z;
+        }
+        if (state.bbox && state.bbox.length === 4) {
+          const xmin = Number(state.bbox[0]);
+          const ymin = Number(state.bbox[1]);
+          const xmax = Number(state.bbox[2]);
+          const ymax = Number(state.bbox[3]);
+          const bboxOk =
+            isFiniteNumber(xmin) && isFiniteNumber(ymin) && isFiniteNumber(xmax) && isFiniteNumber(ymax) &&
+            xmin < xmax && ymin < ymax &&
+            xmin >= -180 && xmax <= 180 && ymin >= -90 && ymax <= 90;
+          if (bboxOk) {
+            view.goTo({
+              type: "extent",
+              xmin,
+              ymin,
+              xmax,
+              ymax,
+              spatialReference: { wkid: 4326 },
+            }).catch(() => {});
+          } else {
+            showError({ error: "Invalid bbox extent.", hint: "Expected [xmin,ymin,xmax,ymax] in lon/lat degrees." });
+          }
+        }
+        clearGraphics(activeEl);
+        const layer = getGraphicsLayer(activeEl);
+        if (state.markers && state.markers.length) {
+          const symbol = new SimpleMarkerSymbol({
+            color: [255, 0, 0, 0.8],
+            size: 12,
+            outline: { color: [255, 255, 255], width: 2 },
+          });
+          state.markers.forEach((m, i) => {
+            const n = normalizeLonLat(Number(m.x), Number(m.y));
+            if (!n) return;
+            const point = new Point({
+              x: n.lon,
+              y: n.lat,
+              spatialReference: new SpatialReference({ wkid: 4326 }),
+            });
+            const title = state.markers.length > 1 ? `Stop ${i + 1}` : "Location";
+            const content = `${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}` + (n.swapped ? " (auto-swapped)" : "");
+            layer.add(new Graphic({
+              geometry: point,
+              symbol,
+              popupTemplate: { title, content },
+            }));
+          });
+        }
+        if (state.routeGeometry && state.routeGeometry.coordinates) {
+          const coords = state.routeGeometry.coordinates;
+          const paths = [coords.map(c => [c[0], c[1]])];
+          const polyline = new Polyline({
+            paths,
+            spatialReference: new SpatialReference({ wkid: 4326 }),
+          });
+          const lineSymbol = new SimpleLineSymbol({
+            color: [0, 122, 255, 0.9],
+            width: 3,
+          });
+          layer.add(new Graphic({ geometry: polyline, symbol: lineSymbol }));
+        } else if (state.routeGeometry && state.routeGeometry.paths) {
+          const polyline = new Polyline({
+            paths: state.routeGeometry.paths,
+            spatialReference: state.routeGeometry.spatialReference ? new SpatialReference(state.routeGeometry.spatialReference) : new SpatialReference({ wkid: 4326 }),
+          });
+          const lineSymbol = new SimpleLineSymbol({
+            color: [0, 122, 255, 0.9],
+            width: 3,
+          });
+          layer.add(new Graphic({ geometry: polyline, symbol: lineSymbol }));
+        }
+        applyGraphicsFromState(activeEl, state);
+        if ((!state.center || state.center.longitude == null || state.center.latitude == null) && (!state.bbox || state.bbox.length !== 4) && _opLayers.length) {
+          try {
+            const first = _opLayers[0];
+            await first.when();
+            if (first.fullExtent) view.goTo(first.fullExtent).catch(() => {});
+          } catch (_) {}
+        }
+        const summaryEl = document.getElementById("map-route-summary");
+        if (summaryEl) {
+          const sm = state.routeSummary || {};
+          const min = sm.total_time_min ?? state.total_time;
+          const mi = sm.total_length_mi ?? state.total_length;
+          let s = "";
+          if (min != null) s += "~" + Math.round(Number(min) / 60) + " h";
+          if (mi != null) s += (s ? ", " : "") + Math.round(Number(mi)) + " mi";
+          if (s) { summaryEl.textContent = s; summaryEl.style.display = "block"; } else { summaryEl.style.display = "none"; }
+        }
+        if (toggleViewBtn) {
+          const mode = (state.viewMode || "2d").toString().toLowerCase();
+          toggleViewBtn.textContent = mode === "3d" ? "2D" : "3D";
+        }
+      }
+
+      function extractStateFromResult(result) {
+        if (!result || !result.content || !result.content.length) return null;
+        const first = result.content[0];
+        const text = first.type === "text" ? first.text : null;
+        if (!text) return null;
+        try {
+          const parsed = JSON.parse(text);
+          // Support intent envelope outputs (non-map intents may carry map_state)
+          if (parsed && typeof parsed === "object" && parsed.type === "intent_result") {
+            if (parsed.status === "error" && parsed.error) {
+              showError(parsed.error && typeof parsed.error === "object"
+                ? { error: parsed.error.message, hint: parsed.error.hint }
+                : parsed.error);
+              return null;
+            }
+            if (parsed.map_state && typeof parsed.map_state === "object") {
+              // Bubble warnings if present
+              if (parsed.warnings && Array.isArray(parsed.warnings) && parsed.warnings.length) {
+                showError({ error: "Warning", hint: parsed.warnings.join(" ") });
+              }
+              return parsed.map_state;
+            }
+          }
+          return parsed;
+        } catch {
+          return null;
+        }
+      }
+
+      app.ontoolresult = (result) => {
+        const state = extractStateFromResult(result);
+        if (state && state.error) {
+          showError(state);
+          return;
+        }
+        if (state) applyMapState(state).catch((e) => console.warn("[ArcGIS Map App]", e));
+      };
+
+      app.ontoolinput = (params) => {
+        if (params && params.arguments && typeof params.arguments === "object") {
+          const args = params.arguments;
+          const state = {
+            center: args.center ? null : { longitude: 0, latitude: 0 },
+            zoom: args.zoom ?? 10,
+            bbox: null,
+            markers: [],
+            routeGeometry: args.route_geojson || null,
+          };
+          hideError();
+          if (args.basemap_id) state.basemapId = args.basemap_id;
+          if (args.view_mode) state.viewMode = args.view_mode;
+          if (args.overlays) state.overlays = args.overlays;
+          if (args.terrain) state.overlays = [{ type: "tile", url: "https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer", opacity: 0.6, title: "Hillshade" }];
+          if (args.center || args.locations) {
+            try {
+              const text = JSON.stringify(args);
+              const parsed = JSON.parse(text);
+              state.center = parsed.center ? null : { longitude: 0, latitude: 0 };
+              state.markers = Array.isArray(parsed.locations)
+                ? parsed.locations
+                  .filter(l => Array.isArray(l) && l.length >= 2)
+                  .map(l => {
+                    const n = normalizeLonLat(Number(l[0]), Number(l[1]));
+                    return n ? ({ x: n.lon, y: n.lat }) : null;
+                  })
+                  .filter(Boolean)
+                : [];
+            } catch (_) {}
+          }
+          applyMapState(state).catch((e) => console.warn("[ArcGIS Map App]", e));
+        }
+      };
+
+      app.onerror = (err) => console.error("[ArcGIS Map App]", err);
+      if (toggleViewBtn) {
+        toggleViewBtn.addEventListener("click", () => {
+          if (!_lastState) return;
+          const mode = (_lastState.viewMode || "2d").toString().toLowerCase();
+          _lastState.viewMode = mode === "3d" ? "2d" : "3d";
+          applyMapState(_lastState).catch((e) => console.warn("[ArcGIS Map App]", e));
+        });
+      }
+      if (toggleTerrainBtn) {
+        toggleTerrainBtn.addEventListener("click", () => {
+          if (!_lastState) return;
+          const ovs = Array.isArray(_lastState.overlays) ? _lastState.overlays : [];
+          const has = ovs.some(o => o && o.url === "https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer");
+          _lastState.overlays = has ? ovs.filter(o => !(o && o.url === "https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer")) : [{ type: "tile", url: "https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer", opacity: 0.6, title: "Hillshade" }, ...ovs];
+          applyMapState(_lastState).catch((e) => console.warn("[ArcGIS Map App]", e));
+        });
+      }
+      app.connect();
+    })();
+  </script>
+</body>
+</html>

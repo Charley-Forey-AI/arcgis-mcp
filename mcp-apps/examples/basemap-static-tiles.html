@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Static basemap tiles | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <script>
+      var esriConfig = {
+        apiKey: "YOUR_ACCESS_TOKEN",
+      };
+    </script>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      #basemapStyle {
+        padding: 10px;
+        background-color: white;
+        width: 250px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map zoom="9" center="2.87936, 39.60960">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <div id="basemapStyle" slot="top-right">
+        <calcite-label>Static basemap style</calcite-label>
+        <calcite-combobox
+          id="basemapStyleDropdown"
+          selection-mode="single"
+          clear-disabled></calcite-combobox>
+      </div>
+    </arcgis-map>
+
+    <script type="module">
+      const [Map, TileLayer, Basemap, esriRequest] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/TileLayer.js",
+        "@arcgis/core/Basemap.js",
+        "@arcgis/core/request.js",
+      ]);
+
+      const viewElement = document.querySelector("arcgis-map");
+      const styleCombobox = document.querySelector("#basemapStyleDropdown");
+      // set the default basemap style path
+      let basemapStylePath = "/arcgis/outdoor";
+
+      // url to the static basemap styles endpoint
+      const basemapStylesEndpoint =
+        "https://static-map-tiles-api.arcgis.com/arcgis/rest/services/static-basemap-tiles-service/v1";
+
+      // get the basemap styles from the static basemap styles endpoint
+      // and add them to the combobox
+      const response = await esriRequest(`${basemapStylesEndpoint}/self`, {
+        responseType: "json",
+      });
+      const json = response.data;
+      // add each style as a combobox item
+      json.styles.forEach((style) => {
+        const comboboxItem = document.createElement("calcite-combobox-item");
+        comboboxItem.value = style.path;
+        comboboxItem.heading = style.name;
+        // if the current basemap style is the same as the combobox item, select it
+        comboboxItem.selected = basemapStylePath === style.path;
+        styleCombobox.appendChild(comboboxItem);
+      });
+      // create the tile layer with the default style
+      const staticBasemapLayer = new TileLayer({
+        url: `${basemapStylesEndpoint}${basemapStylePath}/static`,
+        customParameters: {
+          // set the basemap language to French
+          language: "fr",
+          // you can also set the worldview here
+          // worldview: "unitedStatesOfAmerica",
+        },
+      });
+      // create the basemap with the tile layer and add it to the map
+      viewElement.map = new Map({
+        basemap: new Basemap({
+          baseLayers: [staticBasemapLayer],
+        }),
+      });
+      // when the combobox value changes, update the style URL and refresh the layer
+      styleCombobox.addEventListener("calciteComboboxChange", () => {
+        basemapStylePath = styleCombobox.value;
+        if (basemapStylePath) {
+          staticBasemapLayer.url = `${basemapStylesEndpoint}${basemapStylePath}/static`;
+          staticBasemapLayer.refresh();
+        }
+      });
+    </script>
+  </body>
+</html>

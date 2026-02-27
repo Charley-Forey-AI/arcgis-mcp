@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Query Knowledge Graphs | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+    <style>
+      body {
+        margin: 0px 120px;
+        color: #151515;
+        font-size: 14px;
+      }
+
+      .flex {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        height: 100%;
+      }
+
+      #mapDiv,
+      #linkChartDiv {
+        height: 100%;
+      }
+
+      select {
+        height: 30px;
+        width: 150px;
+      }
+
+      #info {
+        max-width: 250px;
+      }
+    </style>
+
+    <script type="module">
+      const [
+        KGModule,
+        SketchViewModel,
+        GraphicsLayer,
+        Graphic,
+        Polygon,
+        webMercatorUtils,
+        KnowledgeGraphLayer,
+        WebLinkChart,
+        LinkChartView,
+        LinkChartLayer,
+      ] = await $arcgis.import([
+        "@arcgis/core/rest/knowledgeGraphService.js",
+        "@arcgis/core/widgets/Sketch/SketchViewModel.js",
+        "@arcgis/core/layers/GraphicsLayer.js",
+        "@arcgis/core/Graphic.js",
+        "@arcgis/core/geometry/Polygon.js",
+        "@arcgis/core/geometry/support/webMercatorUtils.js",
+        "@arcgis/core/layers/KnowledgeGraphLayer.js",
+        "@arcgis/core/WebLinkChart.js",
+        "@arcgis/core/views/LinkChartView.js",
+        "@arcgis/core/layers/LinkChartLayer.js",
+      ]);
+
+      /**
+       * Credentials to sign in to the knowledge graph service:
+       * username: viewer01
+       * password: I68VGU^nMurF
+       */
+
+      // set knowledge graph with url to service
+      const url =
+        "https://sampleserver7.arcgisonline.com/server/rest/services/Hosted/BumbleBees/KnowledgeGraphServer";
+      const knowledgeGraph = await KGModule.fetchKnowledgeGraph(url);
+
+      let newLayer = true;
+
+      // map initialization with graphics layer
+      let polygonGraphic = new Graphic({
+        geometry: {
+          type: "polygon", // autocasts as new Polygon()
+          rings: [
+            [-76, 45],
+            [-70, 45],
+            [-70, 40],
+            [-76, 40],
+            [-76, 45],
+          ],
+        },
+        symbol: {
+          type: "simple-line",
+          color: [226, 119, 40],
+          width: 4,
+        },
+      });
+      const graphicsLayer = new GraphicsLayer({
+        graphics: [polygonGraphic],
+      });
+      let kgLayer = new KnowledgeGraphLayer({
+        url: url,
+      });
+      await kgLayer.load();
+      //get the map and link chart components and wait for them to load
+      const mapComponent = document.querySelector("arcgis-map");
+      const linkChartComponent = document.querySelector("arcgis-link-chart");
+      await mapComponent.componentOnReady();
+      await linkChartComponent.componentOnReady();
+      const view = mapComponent.view;
+      const map = mapComponent.map;
+
+      //once they are loaded, add the knowledge graph layer and graphics layer to the map.
+      map.add(kgLayer);
+      map.add(graphicsLayer);
+      //set up the sketch view model
+      const sketchViewModel = new SketchViewModel({
+        view: view,
+        layer: graphicsLayer,
+      });
+
+      const lcView = linkChartComponent.view;
+      const linkChart = lcView.map;
+
+      // Once user is done updating the rectangle on the map
+      //update the query
+      view.when(() => {
+        const updateQuery = (event) => {
+          if (event.state === "complete") {
+            executeQuery();
+          }
+        };
+        sketchViewModel.on("update", updateQuery);
+      });
+
+      /**
+       * Use the query results to update the link chart.
+       * Since the query returns results in chunks, the first chunk returned
+       * needs to get added to a new link chart layer. All results returned in subsequent chunks get added to the layer.
+       */
+      const updateLinkChart = async (rows) => {
+        let newRecords = [];
+        let membersList = new Map();
+
+        for (const result of rows) {
+          for (const index in result[0].path) {
+            const record = result[0].path[index];
+            if (newLayer) {
+              if (!membersList.has(record.typeName)) {
+                membersList.set(record.typeName, { useAllData: false, members: new Map() });
+              }
+              membersList.get(record.typeName).members.set(record.id, { id: record.id });
+            } else {
+              newRecords.push({ id: record.id, typeName: record.typeName });
+            }
+          }
+        }
+
+        let inclusionDef = {
+          generateAllSublayers: false,
+          namedTypeDefinitions: membersList,
+        };
+
+        //create the layer with the records returned from the first chunk
+        if (newLayer) {
+          const updatedLayer = new LinkChartLayer({
+            url: url,
+            initializationInclusionModeDefinition: inclusionDef,
+          });
+
+          await updatedLayer.load();
+          const existingLayer = linkChart.allLayers.find((layer) => layer.type === "link-chart");
+          linkChart.remove(existingLayer);
+          linkChart.add(updatedLayer);
+          //otherwise add the records to the layer
+        } else {
+          linkChart.addRecords(newRecords);
+        }
+        lcView.when(() => lcView.goTo(lcView.map.diagramNodesExtent.expand(1.5)));
+      };
+
+      /**
+       * Streaming query to return the selected entities or relationships that match the pattern defined in the query.
+       * It uses the bindParameter property to either bind geometry from the sketch on the map to the query to perform a spatial query on the graph
+       * or to bind a list of ids to query within.
+       * Streaming query has more options to refine the query results.
+       * Streaming query also has much higher performance when working with large datasets.
+       * It returns the data in chunks that can be processed as they are returned.
+       */
+      const executeQuery = async () => {
+        const bindParameters = {};
+        //create a geometry from the sketch layer as the bind parameter
+        const rings = [];
+
+        for (const graphic of graphicsLayer.graphics.items) {
+          //convert the geometry to wgs84 if necessary
+          const geom = graphic.geometry.spatialReference.isWGS84
+            ? graphic.geometry
+            : webMercatorUtils.webMercatorToGeographic(graphic.geometry);
+          rings.push(geom.rings[0]);
+        }
+
+        bindParameters["userGeometry"] = new Polygon({ rings: rings });
+        //execute the query and display the results
+        const queryResults = await KGModule.executeQueryStreaming(knowledgeGraph, {
+          openCypherQuery:
+            "MATCH path=(A:User) - [] -> (B:Observation) WHERE esri.graph.ST_Intersects($userGeometry, B.shape) RETURN path",
+          bindParameters: bindParameters,
+        });
+        newLayer = true;
+        readStream(queryResults);
+      };
+
+      // a function to read the stream returned from the streaming search
+      const readStream = async (streamingQueryResult, method) => {
+        //create the reader
+        let reader = streamingQueryResult.resultRowsStream.getReader();
+        let resultRows = [];
+        //try to read the stream
+        try {
+          while (true) {
+            //read the stream
+            const { done, value } = await reader.read();
+            //stop reader when the stream is done
+            if (done) {
+              break;
+            }
+
+            updateLinkChart(value);
+            newLayer = false;
+            //create the output list from the read stream.
+          }
+          // if there is an error in returning the stream or the stream is aborted
+        } catch (err) {
+          if (err.name === "AbortError") {
+            console.log("Request aborted as expected");
+          } else {
+            throw err;
+          }
+        }
+      };
+      executeQuery();
+    </script>
+  </head>
+
+  <body>
+    <calcite-shell>
+      <calcite-panel id="queryPanel" class="query" heading="Query a knowledge graph">
+        <div class="flex">
+          <div id="mapDiv">
+            <arcgis-map basemap="gray-vector" center="-74, 43" zoom="3">
+              <arcgis-expand
+                expanded
+                close-on-esc
+                slot="top-left"
+                mode="floating"
+                expand-icon="information">
+                <calcite-notice id="info" open>
+                  <div slot="message">
+                    Use the study area on the map to identify observations. Once the study area is
+                    set, it will query the knowledge graph and update the link chart with the users
+                    who made or reviewed those observations. Select the rectangle to modify the
+                    query area and deselect it to apply the query. <br /><br />
+                    <b>openCypher Query</b>
+                    MATCH path=(A:User) - [] -> (B:Observation) WHERE
+                    esri.graph.ST_Intersects($userGeometry, B.shape) RETURN path
+                  </div>
+                </calcite-notice>
+              </arcgis-expand>
+              <arcgis-zoom slot="bottom-right"></arcgis-zoom>
+            </arcgis-map>
+          </div>
+
+          <div id="linkChartDiv">
+            <arcgis-link-chart>
+              <arcgis-expand close-on-esc slot="top-right" mode="floating">
+                <arcgis-legend></arcgis-legend>
+              </arcgis-expand>
+
+              <arcgis-zoom slot="bottom-right"></arcgis-zoom>
+            </arcgis-link-chart>
+          </div>
+        </div>
+      </calcite-panel>
+    </calcite-shell>
+  </body>
+</html>

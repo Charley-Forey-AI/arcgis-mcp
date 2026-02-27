@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArcGIS Studio</title>
+  <script type="module" src="https://js.arcgis.com/5.0/"></script>
+  <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css">
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .layout { height: 100%; display: grid; grid-template-columns: 1fr 380px; }
+    .mapPane { position: relative; min-width: 0; }
+    .sidePane { border-left: 1px solid #e5e5e5; padding: 12px; overflow: auto; background: #fff; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    input[type="text"] { flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid #cfcfcf; font-size: 14px; }
+    select { flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid #cfcfcf; font-size: 14px; background: #fff; }
+    button { padding: 8px 10px; border-radius: 10px; border: 1px solid #cfcfcf; background: #fff; cursor: pointer; font-size: 14px; }
+    button.primary { background: #0b5fff; border-color: #0b5fff; color: #fff; }
+    .muted { color: #666; font-size: 12px; }
+    .card { border: 1px solid #eee; border-radius: 12px; padding: 10px; margin-top: 10px; }
+    .results { display: grid; gap: 8px; margin-top: 10px; }
+    .resultTitle { font-weight: 600; font-size: 14px; margin: 0; }
+    .resultMeta { margin: 4px 0 0 0; font-size: 12px; color: #666; }
+    .divider { height: 1px; background: #eee; margin: 12px 0; }
+    #map-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(245,245,245,0.85); z-index: 10; }
+    #shareLink { word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="mapPane">
+      <div id="map-loading" aria-live="polite">Loading…</div>
+      <div style="position:absolute;top:12px;left:12px;z-index:20;display:flex;gap:8px;">
+        <button id="toggle-view" type="button">3D</button>
+      </div>
+      <arcgis-map id="arcgis-map" basemap="streets" style="width:100%;height:100%;" aria-label="Map">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-search slot="top-right"></arcgis-search>
+        <arcgis-scale-bar slot="bottom-left"></arcgis-scale-bar>
+        <arcgis-basemap-toggle slot="bottom-right"></arcgis-basemap-toggle>
+      </arcgis-map>
+      <arcgis-scene id="arcgis-scene" basemap="streets" style="width:100%;height:100%;display:none;" aria-label="3D Scene">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-search slot="top-right"></arcgis-search>
+        <arcgis-scale-bar slot="bottom-left"></arcgis-scale-bar>
+        <arcgis-basemap-toggle slot="bottom-right"></arcgis-basemap-toggle>
+      </arcgis-scene>
+    </div>
+    <aside class="sidePane">
+      <div class="row">
+        <input id="searchQuery" type="text" placeholder="Search portal content (e.g. parcels, owner:me)" />
+        <button id="searchBtn" class="primary" type="button">Search</button>
+      </div>
+      <div class="muted" style="margin-top:6px;">
+        Tip: click a result to add it to the map; use the style buttons for quick thematic views.
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row" style="justify-content:space-between;">
+        <div style="font-weight:700;">Results</div>
+        <div class="muted" id="status"></div>
+      </div>
+      <div id="results" class="results"></div>
+
+      <div class="divider"></div>
+
+      <div style="font-weight:700;">Layer</div>
+      <div class="card">
+        <div id="layerStatus" class="muted">No layer selected yet. Click “Add” on a portal result.</div>
+        <div id="layerMeta" class="muted" style="margin-top:6px;"></div>
+        <div class="row" style="margin-top:10px;">
+          <select id="fieldSelect">
+            <option value="">Field (for style)</option>
+          </select>
+          <button id="suggestBtn" type="button">Suggest</button>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <select id="filterField">
+            <option value="">Filter field</option>
+          </select>
+          <select id="filterOp" style="flex:0 0 120px;">
+            <option value="=">=</option>
+            <option value="!=">!=</option>
+            <option value=">">&gt;</option>
+            <option value="<">&lt;</option>
+            <option value="LIKE">LIKE</option>
+            <option value="IS_NULL">IS NULL</option>
+            <option value="IS_NOT_NULL">IS NOT NULL</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <input id="filterValue" type="text" placeholder="Filter value" />
+          <button id="applyFilterBtn" class="primary" type="button">Apply</button>
+        </div>
+        <div class="row" style="margin-top:10px; gap:6px; flex-wrap:wrap;">
+          <button id="styleAuto" type="button">Smart</button>
+          <button id="styleNumeric" type="button">Numeric</button>
+          <button id="styleCategory" type="button">Category</button>
+          <button id="styleCluster" type="button">Cluster</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:6px;">Stats</div>
+        <div class="row">
+          <select id="numericFieldSelect">
+            <option value="">Numeric field</option>
+          </select>
+          <button id="statsBtn" type="button">Run</button>
+        </div>
+        <div id="statsOut" class="muted" style="margin-top:8px; white-space:pre-wrap;"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div style="font-weight:700;">Analysis</div>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:6px;">Buffer</div>
+        <div class="row">
+          <input id="bufLocation" type="text" placeholder="Location (address or lon,lat)" />
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <input id="bufDistance" type="text" placeholder="Distance" style="flex:0 0 120px;" />
+          <input id="bufUnit" type="text" placeholder="Unit (Meter)" style="flex:1;" />
+          <button id="bufRun" type="button">Run</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:6px;">Nearest</div>
+        <div class="row">
+          <input id="nearLocation" type="text" placeholder="Location (address or lon,lat)" />
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <input id="nearItemId" type="text" placeholder="Layer item_id (portal)" />
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <input id="nearMax" type="text" placeholder="Max (10)" style="flex:0 0 120px;" />
+          <button id="nearRun" type="button">Run</button>
+        </div>
+        <div class="muted" style="margin-top:6px;">Tip: after “Add”, the item_id is auto-filled here.</div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:6px;">Results</div>
+        <div id="analysisResults" class="muted">Run an analysis to see results here.</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div style="font-weight:700;">Share</div>
+      <div class="card">
+        <div class="muted">If the server is configured with `ARCGIS_MAP_BASE_URL`, maps can be shared.</div>
+        <div id="shareLink" class="muted" style="margin-top:6px;"></div>
+      </div>
+    </aside>
+  </div>
+
+  <script type="module">
+    (async function () {
+      await customElements.whenDefined("arcgis-map");
+      const mapEl = document.getElementById("arcgis-map");
+      const sceneEl = document.getElementById("arcgis-scene");
+      await Promise.race([customElements.whenDefined("arcgis-scene"), new Promise(r => setTimeout(r, 1000))]);
+      await mapEl.viewOnReady();
+      if (sceneEl) { try { await sceneEl.viewOnReady(); } catch (_) {} }
+
+      const loadingEl = document.getElementById("map-loading");
+      if (loadingEl) loadingEl.style.display = "none";
+
+      const { App } = await import("https://esm.sh/@modelcontextprotocol/ext-apps");
+      const app = new App({ name: "ArcGIS Studio", version: "1.0.0" });
+
+      const arcgis = globalThis.$arcgis || (typeof window !== "undefined" && window.$arcgis);
+      if (!arcgis) throw new Error("ArcGIS SDK not loaded");
+      const Graphic = await arcgis.import("@arcgis/core/Graphic.js");
+      const Point = await arcgis.import("@arcgis/core/geometry/Point.js");
+      const Polyline = await arcgis.import("@arcgis/core/geometry/Polyline.js");
+      const SimpleMarkerSymbol = await arcgis.import("@arcgis/core/symbols/SimpleMarkerSymbol.js");
+      const SimpleLineSymbol = await arcgis.import("@arcgis/core/symbols/SimpleLineSymbol.js");
+      const SpatialReference = await arcgis.import("@arcgis/core/geometry/SpatialReference.js");
+      const Layer = await arcgis.import("@arcgis/core/layers/Layer.js");
+      const FeatureLayer = await arcgis.import("@arcgis/core/layers/FeatureLayer.js");
+      const TileLayer = await arcgis.import("@arcgis/core/layers/TileLayer.js");
+      const ElevationLayer = await arcgis.import("@arcgis/core/layers/ElevationLayer.js");
+
+      let _opLayers = [];
+      let _overlayLayers = [];
+      let _groundLayer = null;
+      let _lastState = null;
+      let _currentLayer = null; // { layer_item_id?, layer_url?, layer_index? }
+      let _layerDesc = null;
+      let _currentWhere = "1=1";
+      let _currentGoal = "auto";
+
+      function activeElFromState(state) {
+        const mode = (state && state.viewMode) ? String(state.viewMode).toLowerCase() : "2d";
+        if (mode === "3d" && sceneEl) {
+          sceneEl.style.display = "block";
+          mapEl.style.display = "none";
+          return sceneEl;
+        }
+        mapEl.style.display = "block";
+        if (sceneEl) sceneEl.style.display = "none";
+        return mapEl;
+      }
+
+      function clearGraphics(activeEl) {
+        const g = activeEl.graphics;
+        if (g && g.length) g.removeAll();
+      }
+
+      async function clearOperationalLayers(activeEl) {
+        if (!activeEl.map) return;
+        for (const lyr of _opLayers) {
+          try { activeEl.map.layers.remove(lyr); } catch (_) {}
+        }
+        _opLayers = [];
+      }
+
+      async function clearOverlays(activeEl) {
+        if (!activeEl.map) return;
+        for (const lyr of _overlayLayers) {
+          try { activeEl.map.layers.remove(lyr); } catch (_) {}
+        }
+        _overlayLayers = [];
+      }
+
+      async function applyOverlays(activeEl, overlays) {
+        if (!activeEl.map) return;
+        await clearOverlays(activeEl);
+        if (!Array.isArray(overlays) || !overlays.length) return;
+        for (const o of overlays) {
+          if (!o || typeof o !== "object") continue;
+          const type = (o.type || "").toString().toLowerCase();
+          const url = (o.url || "").toString();
+          if (!type || !url) continue;
+          try {
+            let lyr = null;
+            if (type === "tile") lyr = new TileLayer({ url });
+            else if (/\/FeatureServer\/\d+\/?$/i.test(url)) lyr = new FeatureLayer({ url });
+            else lyr = await Layer.fromArcGISServerUrl({ url });
+            if (!lyr) continue;
+            if (o.opacity != null) {
+              const op = Number(o.opacity);
+              if (!Number.isNaN(op)) lyr.opacity = Math.max(0, Math.min(1, op));
+            }
+            activeEl.map.layers.add(lyr);
+            _overlayLayers.push(lyr);
+          } catch (_) {}
+        }
+      }
+
+      async function applyGround(activeEl, state) {
+        if (!activeEl.map) return;
+        const mode = (state && state.viewMode) ? String(state.viewMode).toLowerCase() : "2d";
+        if (mode !== "3d") return;
+        const gc = (state && typeof state.ground === "object" && state.ground) ? state.ground : {};
+        const url = (gc.elevationUrl || gc.url || "").toString().trim() || "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer";
+        try {
+          if (_groundLayer) { activeEl.map.ground.layers.remove(_groundLayer); _groundLayer = null; }
+          const el = new ElevationLayer({ url });
+          activeEl.map.ground.layers.add(el);
+          _groundLayer = el;
+        } catch (_) {}
+      }
+
+      async function applyLayerEntry(activeEl, entry) {
+        if (!entry || typeof entry !== "object" || !activeEl.map) return null;
+        const src = (entry.source && typeof entry.source === "object") ? entry.source : entry;
+        const itemId = (src.item_id || src.itemId || "").toString().trim();
+        const idxRaw = src.layer_index != null ? src.layer_index : (src.layerId != null ? src.layerId : null);
+        const idx = (idxRaw != null && idxRaw !== "") ? Number(idxRaw) : null;
+        const urlRaw = (src.url || "").toString().trim();
+        let layer = null;
+        if (itemId) {
+          layer = await Layer.fromPortalItem({ portalItem: { id: itemId }, layerId: idx != null && !Number.isNaN(idx) ? idx : undefined });
+        } else if (urlRaw) {
+          let url = urlRaw;
+          if (idx != null && !Number.isNaN(idx) && /\/(FeatureServer|MapServer|ImageServer|VectorTileServer)\/?$/i.test(url)) {
+            url = url.replace(/\/+$/, "") + "/" + String(idx);
+          }
+          if (/\/FeatureServer\/\d+\/?$/i.test(url)) {
+            layer = new FeatureLayer({ url });
+          } else {
+            layer = await Layer.fromArcGISServerUrl({ url });
+          }
+        }
+        if (!layer) return null;
+
+        try {
+          if (entry.opacity != null) {
+            const op = Number(entry.opacity);
+            if (!Number.isNaN(op)) layer.opacity = Math.max(0, Math.min(1, op));
+          }
+        } catch (_) {}
+        try { if (entry.definitionExpression && ("definitionExpression" in layer)) layer.definitionExpression = String(entry.definitionExpression); } catch (_) {}
+        try { if (entry.outFields != null && ("outFields" in layer)) layer.outFields = entry.outFields; } catch (_) {}
+        try { if (entry.renderer && ("renderer" in layer)) layer.renderer = entry.renderer; } catch (_) {}
+        try {
+          if (entry.labelingInfo && ("labelingInfo" in layer)) {
+            layer.labelingInfo = Array.isArray(entry.labelingInfo) ? entry.labelingInfo : [entry.labelingInfo];
+            layer.labelsVisible = true;
+          }
+        } catch (_) {}
+        try { if (entry.featureReduction && ("featureReduction" in layer)) layer.featureReduction = entry.featureReduction; } catch (_) {}
+        try { if (entry.elevationInfo && ("elevationInfo" in layer)) layer.elevationInfo = entry.elevationInfo; } catch (_) {}
+        // Default popups + outFields so clicking features shows metadata
+        try {
+          if (("popupEnabled" in layer)) layer.popupEnabled = true;
+          if (!entry.popupTemplate && ("popupTemplate" in layer) && !layer.popupTemplate) {
+            layer.popupTemplate = { title: "Feature", content: "{*}" };
+          }
+        } catch (_) {}
+        try {
+          if (entry.outFields == null && ("outFields" in layer) && (!layer.outFields || !layer.outFields.length)) {
+            layer.outFields = ["*"];
+          }
+        } catch (_) {}
+        return layer;
+      }
+
+      function applyGraphicsFromState(activeEl, state) {
+        if (!Array.isArray(state.graphics) || !state.graphics.length) return;
+        const gl = activeEl.graphics;
+        for (const g of state.graphics) {
+          if (!g || typeof g !== "object") continue;
+          const geom = g.geometry && typeof g.geometry === "object" ? g.geometry : null;
+          if (!geom) continue;
+          if (!geom.spatialReference) geom.spatialReference = { wkid: 4326 };
+          gl.add(new Graphic({
+            geometry: geom,
+            symbol: (g.symbol && typeof g.symbol === "object") ? g.symbol : undefined,
+            attributes: (g.attributes && typeof g.attributes === "object") ? g.attributes : undefined,
+            popupTemplate: (g.popupTemplate && typeof g.popupTemplate === "object") ? g.popupTemplate : undefined,
+          }));
+        }
+      }
+
+      async function applyMapState(state) {
+        if (!state) return;
+        _lastState = state;
+        const activeEl = activeElFromState(state);
+        if (!activeEl || !activeEl.view) return;
+        const view = activeEl.view;
+
+        if (state.basemapId) { try { activeEl.basemap = state.basemapId; } catch (_) {} }
+        await applyGround(activeEl, state);
+        if (state.overlays) await applyOverlays(activeEl, state.overlays);
+
+        await clearOperationalLayers(activeEl);
+        const entries = Array.isArray(state.layers) ? state.layers : (state.layer ? [state.layer] : []);
+        for (let i = 0; i < entries.length; i++) {
+          try {
+            const lyr = await applyLayerEntry(activeEl, entries[i]);
+            if (!lyr) continue;
+            activeEl.map.layers.add(lyr, i);
+            _opLayers.push(lyr);
+          } catch (_) {}
+        }
+
+        if (state.center && state.center.longitude != null && state.center.latitude != null) view.center = [state.center.longitude, state.center.latitude];
+        if (state.zoom != null) view.zoom = state.zoom;
+        if (state.bbox && state.bbox.length === 4) {
+          view.goTo({ type: "extent", xmin: state.bbox[0], ymin: state.bbox[1], xmax: state.bbox[2], ymax: state.bbox[3], spatialReference: { wkid: 4326 } }).catch(() => {});
+        }
+
+        clearGraphics(activeEl);
+        const g = activeEl.graphics;
+
+        if (Array.isArray(state.markers) && state.markers.length) {
+          const sym = new SimpleMarkerSymbol({ color: [255, 0, 0, 0.85], size: 12, outline: { color: [255, 255, 255, 1], width: 2 } });
+          state.markers.forEach((m, i) => {
+            const pt = new Point({ x: m.x, y: m.y, spatialReference: new SpatialReference({ wkid: 4326 }) });
+            const title = state.markers.length > 1 ? `Stop ${i + 1}` : "Location";
+            const content = `${m.y.toFixed(5)}, ${m.x.toFixed(5)}`;
+            g.add(new Graphic({ geometry: pt, symbol: sym, popupTemplate: { title, content } }));
+          });
+        }
+        if (state.routeGeometry && state.routeGeometry.coordinates) {
+          const coords = state.routeGeometry.coordinates;
+          const paths = [coords.map(c => [c[0], c[1]])];
+          const polyline = new Polyline({ paths, spatialReference: new SpatialReference({ wkid: 4326 }) });
+          g.add(new Graphic({ geometry: polyline, symbol: new SimpleLineSymbol({ color: [0, 122, 255, 0.9], width: 3 }) }));
+        } else if (state.routeGeometry && state.routeGeometry.paths) {
+          const polyline = new Polyline({ paths: state.routeGeometry.paths, spatialReference: state.routeGeometry.spatialReference ? new SpatialReference(state.routeGeometry.spatialReference) : new SpatialReference({ wkid: 4326 }) });
+          g.add(new Graphic({ geometry: polyline, symbol: new SimpleLineSymbol({ color: [0, 122, 255, 0.9], width: 3 }) }));
+        }
+
+        applyGraphicsFromState(activeEl, state);
+        if ((!state.center || state.center.longitude == null || state.center.latitude == null) && (!state.bbox || state.bbox.length !== 4) && _opLayers.length) {
+          try {
+            const first = _opLayers[0];
+            await first.when();
+            if (first.fullExtent) view.goTo(first.fullExtent).catch(() => {});
+          } catch (_) {}
+        }
+
+        const shareEl = document.getElementById("shareLink");
+        if (shareEl) shareEl.textContent = state.map_url ? state.map_url : "";
+        renderAnalysis(state);
+      }
+
+      function renderAnalysis(state) {
+        const root = document.getElementById("analysisResults");
+        if (!root) return;
+        const a = state && state.analysis && typeof state.analysis === "object" ? state.analysis : null;
+        if (!a) {
+          root.textContent = "Run an analysis to see results here.";
+          return;
+        }
+        if (a.type === "buffer") {
+          const loc = Array.isArray(a.location) ? a.location : [];
+          root.textContent = `Buffered ${a.distance} ${a.unit} at ${loc.length >= 2 ? (loc[1].toFixed(5) + ", " + loc[0].toFixed(5)) : ""}.`;
+          return;
+        }
+        if (a.type === "nearest") {
+          const rows = Array.isArray(a.rows) ? a.rows : [];
+          if (!rows.length) {
+            root.textContent = "No nearest results.";
+            return;
+          }
+          const table = document.createElement("table");
+          table.style.width = "100%";
+          table.style.borderCollapse = "collapse";
+          const thead = document.createElement("thead");
+          thead.innerHTML = "<tr><th style='text-align:left;font-size:12px;color:#666;padding:6px 4px;border-bottom:1px solid #eee;'>Distance (m)</th><th style='text-align:left;font-size:12px;color:#666;padding:6px 4px;border-bottom:1px solid #eee;'>Attributes (trimmed)</th></tr>";
+          table.appendChild(thead);
+          const tbody = document.createElement("tbody");
+          rows.forEach((r) => {
+            const tr = document.createElement("tr");
+            const d = r && r.distance_m != null ? String(r.distance_m) : "";
+            const attrs = r && r.attributes ? JSON.stringify(r.attributes) : "";
+            tr.innerHTML = `<td style="font-size:12px;padding:6px 4px;border-bottom:1px solid #f3f3f3;white-space:nowrap;">${d}</td><td style="font-size:12px;padding:6px 4px;border-bottom:1px solid #f3f3f3;">${attrs}</td>`;
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          root.innerHTML = "";
+          root.appendChild(table);
+          return;
+        }
+        root.textContent = JSON.stringify(a);
+      }
+
+      function parseToolText(result) {
+        const first = result && result.content && result.content[0];
+        const text = first && first.type === "text" ? first.text : null;
+        if (!text) return null;
+        try { return JSON.parse(text); } catch { return null; }
+      }
+
+      app.ontoolresult = (result) => {
+        const state = parseToolText(result);
+        if (state) applyMapState(state).catch(() => {});
+      };
+
+      const toggleBtn = document.getElementById("toggle-view");
+      if (toggleBtn) {
+        toggleBtn.addEventListener("click", () => {
+          if (!_lastState) _lastState = { viewMode: "2d" };
+          const mode = (_lastState.viewMode || "2d").toString().toLowerCase();
+          _lastState.viewMode = mode === "3d" ? "2d" : "3d";
+          toggleBtn.textContent = _lastState.viewMode === "3d" ? "2D" : "3D";
+          applyMapState(_lastState).catch(() => {});
+        });
+      }
+
+      async function runSearch() {
+        const qEl = document.getElementById("searchQuery");
+        const q = (qEl && qEl.value ? qEl.value : "").trim();
+        if (!q) return;
+        const statusEl = document.getElementById("status");
+        if (statusEl) statusEl.textContent = "Searching…";
+        const res = await app.callTool("search_content", { query: q, max_items: 10 });
+        const data = parseToolText(res) || {};
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (statusEl) statusEl.textContent = items.length ? `${items.length} found` : "None";
+        renderResults(items);
+      }
+
+      function el(tag, props = {}, children = []) {
+        const n = document.createElement(tag);
+        Object.entries(props).forEach(([k, v]) => {
+          if (k === "class") n.className = v;
+          else if (k === "text") n.textContent = v;
+          else n.setAttribute(k, v);
+        });
+        children.forEach(c => n.appendChild(c));
+        return n;
+      }
+
+      function renderResults(items) {
+        const root = document.getElementById("results");
+        if (!root) return;
+        root.innerHTML = "";
+        items.forEach((it) => {
+          const card = el("div", { class: "card" });
+          card.appendChild(el("p", { class: "resultTitle", text: it.title || it.name || "(untitled)" }));
+          card.appendChild(el("p", { class: "resultMeta", text: `${it.type || ""} · ${it.id || ""}` }));
+          const row = el("div", { class: "row" });
+
+          const addBtn = el("button", { type: "button" });
+          addBtn.textContent = "Add";
+          addBtn.addEventListener("click", async () => {
+            const nearItemEl = document.getElementById("nearItemId");
+            if (nearItemEl) nearItemEl.value = it.id || "";
+            await setCurrentLayer({ layer_item_id: it.id, layer_index: 0 });
+            await runSmartShow({ goal: "auto" });
+          });
+
+          const trendBtn = el("button", { type: "button" });
+          trendBtn.textContent = "3D Trend";
+          trendBtn.addEventListener("click", async () => {
+            const nearItemEl = document.getElementById("nearItemId");
+            if (nearItemEl) nearItemEl.value = it.id || "";
+            const stateRes = await app.callTool("show_rotation_icon_layer_3d", { layer_item_id: it.id });
+            const st = parseToolText(stateRes);
+            if (st) applyMapState(st).catch(() => {});
+          });
+
+          row.appendChild(addBtn);
+          row.appendChild(trendBtn);
+          card.appendChild(row);
+          root.appendChild(card);
+        });
+      }
+
+      const searchBtn = document.getElementById("searchBtn");
+      if (searchBtn) searchBtn.addEventListener("click", () => runSearch().catch(() => {}));
+      const qEl = document.getElementById("searchQuery");
+      if (qEl) qEl.addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch().catch(() => {}); });
+
+      function escSql(v) {
+        return String(v ?? "").replace(/'/g, "''");
+      }
+
+      function getFieldType(name) {
+        const fields = _layerDesc && Array.isArray(_layerDesc.fields) ? _layerDesc.fields : [];
+        const f = fields.find(x => x && x.name === name);
+        return f ? (f.type || "") : "";
+      }
+
+      function renderLayerUI(desc) {
+        const stEl = document.getElementById("layerStatus");
+        const metaEl = document.getElementById("layerMeta");
+        const fieldSel = document.getElementById("fieldSelect");
+        const filterField = document.getElementById("filterField");
+        const numSel = document.getElementById("numericFieldSelect");
+        _layerDesc = desc;
+        if (!desc || desc.error) {
+          if (stEl) stEl.textContent = desc && desc.error ? ("Layer error: " + desc.error) : "No layer selected.";
+          if (metaEl) metaEl.textContent = "";
+          return;
+        }
+        const layer = desc.layer || {};
+        const src = desc.source || {};
+        if (stEl) stEl.textContent = `${layer.name || "Layer"} (${layer.geometryType || "unknown"})`;
+        if (metaEl) metaEl.textContent = `maxRecordCount=${layer.maxRecordCount ?? "?"} · stats=${layer.supportsStatistics ? "yes" : "no"} · paging=${layer.supportsPagination ? "yes" : "no"}`;
+
+        const fields = Array.isArray(desc.fields) ? desc.fields : [];
+        function fillSelect(sel, predicate) {
+          if (!sel) return;
+          const keep = sel.value;
+          sel.innerHTML = "<option value=''></option>";
+          fields.filter(predicate).forEach((f) => {
+            const opt = document.createElement("option");
+            opt.value = f.name || "";
+            opt.textContent = `${f.name || ""}${f.alias ? (" · " + f.alias) : ""}`;
+            sel.appendChild(opt);
+          });
+          if (keep) sel.value = keep;
+        }
+        fillSelect(fieldSel, () => true);
+        fillSelect(filterField, () => true);
+        fillSelect(numSel, (f) => String(f.type || "").includes("Integer") || String(f.type || "").includes("Double") || String(f.type || "").includes("Single"));
+      }
+
+      async function setCurrentLayer(src) {
+        _currentLayer = src;
+        _currentWhere = "1=1";
+        const statusEl = document.getElementById("layerStatus");
+        if (statusEl) statusEl.textContent = "Loading layer…";
+        const res = await app.callTool("describe_layer", src);
+        const desc = parseToolText(res);
+        renderLayerUI(desc);
+      }
+
+      function buildWhere() {
+        const ff = (document.getElementById("filterField")?.value || "").trim();
+        const op = (document.getElementById("filterOp")?.value || "=").trim();
+        const fv = (document.getElementById("filterValue")?.value || "").trim();
+        if (!ff) return "1=1";
+        if (op === "IS_NULL") return `${ff} IS NULL`;
+        if (op === "IS_NOT_NULL") return `${ff} IS NOT NULL`;
+        const t = getFieldType(ff);
+        const isString = String(t).toLowerCase().includes("string");
+        if (op === "LIKE") {
+          return `${ff} LIKE '%${escSql(fv)}%'`;
+        }
+        if (isString) {
+          return `${ff} ${op} '${escSql(fv)}'`;
+        }
+        const num = Number(fv);
+        if (!Number.isFinite(num)) return "1=1";
+        return `${ff} ${op} ${num}`;
+      }
+
+      async function runSmartShow({ goal }) {
+        if (!_currentLayer) return;
+        _currentGoal = goal || _currentGoal || "auto";
+        const preferred_field = (document.getElementById("fieldSelect")?.value || "").trim() || undefined;
+        const mode = _lastState && _lastState.viewMode ? _lastState.viewMode : "2d";
+        const stateRes = await app.callTool("smart_show_layer", {
+          ..._currentLayer,
+          where: _currentWhere || "1=1",
+          preferred_field,
+          goal: _currentGoal,
+          view_mode: mode,
+          terrain: true,
+        });
+        const st = parseToolText(stateRes);
+        if (st) applyMapState(st).catch(() => {});
+      }
+
+      const applyFilterBtn = document.getElementById("applyFilterBtn");
+      if (applyFilterBtn) applyFilterBtn.addEventListener("click", () => {
+        _currentWhere = buildWhere();
+        runSmartShow({ goal: _currentGoal }).catch(() => {});
+      });
+      const suggestBtn = document.getElementById("suggestBtn");
+      if (suggestBtn) suggestBtn.addEventListener("click", async () => {
+        if (!_currentLayer) return;
+        const preferred_field = (document.getElementById("fieldSelect")?.value || "").trim() || undefined;
+        const res = await app.callTool("suggest_symbology", { ..._currentLayer, preferred_field, goal: _currentGoal, where: _currentWhere, max_categories: 10 });
+        const data = parseToolText(res);
+        const outEl = document.getElementById("statsOut");
+        if (outEl) outEl.textContent = data ? JSON.stringify(data, null, 2) : "";
+      });
+      document.getElementById("styleAuto")?.addEventListener("click", () => runSmartShow({ goal: "auto" }).catch(() => {}));
+      document.getElementById("styleNumeric")?.addEventListener("click", () => runSmartShow({ goal: "numeric" }).catch(() => {}));
+      document.getElementById("styleCategory")?.addEventListener("click", () => runSmartShow({ goal: "category" }).catch(() => {}));
+      document.getElementById("styleCluster")?.addEventListener("click", () => runSmartShow({ goal: "cluster" }).catch(() => {}));
+
+      const statsBtn = document.getElementById("statsBtn");
+      if (statsBtn) statsBtn.addEventListener("click", async () => {
+        if (!_currentLayer) return;
+        const nf = (document.getElementById("numericFieldSelect")?.value || "").trim();
+        if (!nf) return;
+        const res = await app.callTool("field_stats", { ..._currentLayer, numeric_field: nf, where: _currentWhere, histogram_bins: 10, histogram_sample_size: 300 });
+        const data = parseToolText(res);
+        const outEl = document.getElementById("statsOut");
+        if (outEl) outEl.textContent = data ? JSON.stringify(data, null, 2) : "";
+      });
+
+      async function runBuffer() {
+        const loc = (document.getElementById("bufLocation")?.value || "").trim();
+        const distRaw = (document.getElementById("bufDistance")?.value || "").trim();
+        const unit = (document.getElementById("bufUnit")?.value || "Meter").trim() || "Meter";
+        if (!loc || !distRaw) return;
+        const distance = Number(distRaw);
+        if (Number.isNaN(distance)) return;
+        const mode = _lastState && _lastState.viewMode ? _lastState.viewMode : "2d";
+        const stateRes = await app.callTool("buffer_and_show", { location: loc, distance, unit, view_mode: mode, terrain: true });
+        const st = parseToolText(stateRes);
+        if (st) applyMapState(st).catch(() => {});
+      }
+
+      async function runNearest() {
+        const loc = (document.getElementById("nearLocation")?.value || "").trim();
+        const iid = (document.getElementById("nearItemId")?.value || "").trim();
+        const maxRaw = (document.getElementById("nearMax")?.value || "").trim();
+        const max_count = maxRaw ? Number(maxRaw) : 10;
+        if (!loc || !iid) return;
+        const mode = _lastState && _lastState.viewMode ? _lastState.viewMode : "2d";
+        const stateRes = await app.callTool("nearest_and_show", { location: loc, item_id: iid, max_count: Number.isFinite(max_count) ? max_count : 10, view_mode: mode, terrain: true });
+        const st = parseToolText(stateRes);
+        if (st) applyMapState(st).catch(() => {});
+      }
+
+      const bufRun = document.getElementById("bufRun");
+      if (bufRun) bufRun.addEventListener("click", () => runBuffer().catch(() => {}));
+      const nearRun = document.getElementById("nearRun");
+      if (nearRun) nearRun.addEventListener("click", () => runNearest().catch(() => {}));
+
+      app.connect();
+      // Best-effort: initialize with a blank state (so toggle works)
+      _lastState = { viewMode: "2d", basemapId: "streets", zoom: 10, markers: [] };
+      toggleBtn && (toggleBtn.textContent = "3D");
+      applyMapState(_lastState).catch(() => {});
+    })();
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>PopupTemplate - use functions to set content | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Note: popup-component-enabled enables the Popup component (beta). See https://developers.arcgis.com/javascript/latest/references/map-components/components/arcgis-map/#popupComponentEnabled for details. -->
+    <arcgis-map center="-87, 34" zoom="6" popup-component-enabled>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+    </arcgis-map>
+    <script type="module">
+      const [Map, FeatureLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+      ]);
+      const viewElement = document.querySelector("arcgis-map");
+      const layer = new FeatureLayer({
+        portalItem: {
+          // autocasts as new PortalItem()
+          id: "e8f85b4982a24210b9c8aa20ba4e1bf7",
+        },
+        // Create a new popupTemplate for the layer and call the custom populationChange()
+        // function to calculate percent change for the county.
+        popupTemplate: {
+          // autocasts as new PopupTemplate()
+          title: "Population in {NAME} County",
+          outFields: ["*"],
+          content: populationChange,
+        },
+      });
+      // add the layer to the map
+      viewElement.map = new Map({
+        basemap: "dark-gray-vector",
+        layers: [layer],
+      });
+      await viewElement.viewOnReady();
+      function populationChange(feature) {
+        const div = document.createElement("div");
+        const upArrow =
+          '<svg width="16" height="16" ><polygon points="14.14 7.07 7.07 0 0 7.07 4.07 7.07 4.07 16 10.07 16 10.07 7.07 14.14 7.07" style="fill:green"/></svg>';
+        const downArrow =
+          '<svg width="16" height="16"><polygon points="0 8.93 7.07 16 14.14 8.93 10.07 8.93 10.07 0 4.07 0 4.07 8.93 0 8.93" style="fill:red"/></svg>';
+        // Calculate the population percent change from 2010 to 2013.
+        const diff = feature.graphic.attributes.POP2013 - feature.graphic.attributes.POP2010;
+        const pctChange = (diff * 100) / feature.graphic.attributes.POP2010;
+        const arrow = diff > 0 ? upArrow : downArrow;
+        // Add green arrow if the percent change is positive and a red arrow for negative percent change.
+        div.innerHTML = `As of 2010, the total population in this area was <b>${feature.graphic.attributes.POP2010}</b> and the density was <b>${feature.graphic.attributes.POP10_SQMI}</b> sq mi. As of 2013, the total population was <b>${feature.graphic.attributes.POP2013}</b> and the density was <b>${feature.graphic.attributes.POP13_SQMI}</b> sq mi. <br/> <br/>
+          Percent change is ${arrow} <span style='color: ${pctChange < 0 ? "red" : "green"};'>${pctChange.toFixed(3)}%</span>`;
+        return div;
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Animate color visual variable | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #titleDiv {
+        font-weight: 400;
+        font-style: normal;
+        font-size: 1.2019rem;
+        padding: 10px;
+        background: var(--calcite-color-foreground-1);
+      }
+
+      #footer {
+        display: flex;
+        flex-direction: row;
+        --calcite-color-brand: #9e9e9e;
+        --calcite-color-brand-hover: #ededed;
+      }
+
+      #years-block,
+      #play-block {
+        flex: 1;
+        flex-grow: 1;
+      }
+
+      #slider-block {
+        flex: 5;
+        flex-grow: 10;
+      }
+
+      #sliderValue {
+        display: flex;
+        justify-content: center;
+        flex-direction: column;
+        text-align: center;
+        font-size: 300%;
+      }
+
+      #sliderInnerContainer {
+        justify-content: center;
+        padding: 0 20px;
+        margin-top: 20px;
+        width: 100%;
+      }
+
+      #playButton {
+        margin-top: 20px;
+        padding-left: 10px;
+        width: 110px;
+      }
+
+      /**
+      * Hover tooltip
+      */
+      .tooltip {
+        display: inline-flex;
+      }
+      .tooltip > div {
+        margin: 0 auto;
+        padding: 12px;
+        border-radius: 4px;
+        box-shadow: 0 0 4px rgba(255, 255, 255, 0.75);
+        background-color: var(--calcite-color-foreground-1);
+      }
+    </style>
+  </head>
+
+  <body class="calcite-mode-dark">
+    <calcite-shell id="appShell">
+      <arcgis-map center="-73.967569, 40.727724" zoom="12" resize-align="top-left">
+        <div slot="top-left" id="titleDiv">New York Construction</div>
+        <arcgis-home slot="top-left"></arcgis-home>
+        <arcgis-fullscreen slot="top-right"></arcgis-fullscreen>
+        <arcgis-expand slot="bottom-left" expand-icon="list-bullet">
+          <arcgis-legend legend-style="classic"></arcgis-legend>
+        </arcgis-expand>
+      </arcgis-map>
+      <div id="footer" slot="footer">
+        <calcite-block id="years-block" expanded label="current year">
+          <span id="sliderValue">1880</span>
+        </calcite-block>
+        <calcite-block id="slider-block" label="slider block" expanded>
+          <div id="sliderInnerContainer">
+            <calcite-slider
+              id="yearsSlider"
+              value="1984"
+              label-ticks
+              ticks="137"
+              max-label="2017"
+              max="2017"
+              min-label="1880"
+              min="1880"></calcite-slider>
+          </div>
+        </calcite-block>
+        <calcite-block label="play button block" id="play-block" expanded>
+          <calcite-button id="playButton" appearance="transparent" icon-start="play"
+            >Play</calcite-button
+          >
+        </calcite-block>
+      </div>
+    </calcite-shell>
+
+    <script type="module">
+      // Consolidate imports up front and freeze constants
+      const [Map, FeatureLayer, promiseUtils] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/core/promiseUtils.js",
+      ]);
+
+      const sliderValue = document.getElementById("sliderValue");
+      const playButton = document.getElementById("playButton");
+      const slider = document.getElementById("yearsSlider");
+      const viewElement = document.querySelector("arcgis-map");
+
+      let animation = null;
+
+      // Setup map and layer
+      const layer = new FeatureLayer({
+        portalItem: { id: "dfe2d606134546f5a712e689d76540ac" },
+        definitionExpression: "CNSTRCT_YR > 0",
+        title: "Building Footprints",
+        minScale: 72223.819286,
+        effect: "bloom(2.5 0 0.5)",
+      });
+
+      viewElement.map = new Map({
+        basemap: {
+          portalItem: {
+            id: "4f2e99ba65e34bb8af49733d9778fb8e",
+          },
+        },
+        layers: [layer],
+      });
+
+      viewElement.constraints = {
+        snapToZoom: false,
+        minScale: 72223.819286,
+      };
+
+      const fullsceenElement = document.querySelector("arcgis-fullscreen");
+      fullsceenElement.element = document.getElementById("appShell");
+
+      // When user drags the slider:
+      //  - stops the animation
+      //  - set the visualized year to the slider one.
+      slider.addEventListener("calciteSliderInput", (e) => {
+        stopAnimation();
+        setYear(e.target.value);
+      });
+
+      // Toggle animation on/off when user
+      // clicks on the play button
+      playButton.addEventListener("click", () => {
+        playButton.iconStart === "pause" ? stopAnimation() : startAnimation();
+      });
+
+      // When the layerview is available, setup hovering interactivity
+      viewElement.whenLayerView(layer).then(setupHoverTooltip);
+
+      // Starts the application by visualizing year 1984
+      setYear(1984);
+
+      //--------------------------------------------------------------------------
+      //  Methods
+      //--------------------------------------------------------------------------
+
+      /**
+       * Sets the current visualized construction year.
+       */
+      function setYear(value) {
+        const year = Math.floor(value);
+        sliderValue.textContent = year;
+        slider.value = value;
+        layer.renderer = createRenderer(year);
+      }
+
+      /**
+       * Returns a renderer with a color visual variable driven by the input
+       * year. The selected year will always render buildings built in that year
+       * with a light blue color. Buildings built 20+ years before the indicated
+       * year are visualized with a pink color. Buildings built within that
+       * 20-year time frame are assigned a color interpolated between blue and pink.
+       */
+      function createRenderer(year) {
+        return {
+          type: "simple",
+          symbol: { type: "simple-fill", color: "rgb(0, 0, 0)", outline: null },
+          visualVariables: [
+            {
+              type: "opacity",
+              field: "CNSTRCT_YR",
+              stops: [
+                { opacity: 1, value: year },
+                { opacity: 0, value: year + 1 },
+              ],
+              legendOptions: { showLegend: false },
+            },
+            {
+              type: "color",
+              field: "CNSTRCT_YR",
+              legendOptions: { title: "Built:" },
+              stops: [
+                { value: year, color: "#0ff", label: `in ${year}` },
+                { value: year - 10, color: "#f0f", label: `in ${year - 20}` },
+                { value: year - 50, color: "#404", label: `before ${year - 50}` },
+              ],
+            },
+          ],
+        };
+      }
+
+      /**
+       * Starts the animation that cycle
+       * through the construction years.
+       */
+      function startAnimation() {
+        stopAnimation();
+        animation = animate(Number(slider.value));
+        playButton.iconStart = "pause";
+        playButton.textContent = "Pause";
+      }
+
+      /**
+       * Stops the animations
+       */
+      function stopAnimation() {
+        if (animation) {
+          animation.remove();
+          animation = null;
+        }
+        playButton.iconStart = "play";
+        playButton.textContent = "Play";
+      }
+
+      /**
+       * Animates the color visual variable continously
+       */
+      function animate(startValue) {
+        let animating = true;
+        let value = startValue;
+
+        const update = () => {
+          if (!animating) return;
+          value += 0.5;
+          if (value > 2017) value = 1880;
+          setYear(value);
+          requestAnimationFrame(update);
+        };
+
+        requestAnimationFrame(update);
+
+        return {
+          remove: () => {
+            animating = false;
+          },
+        };
+      }
+
+      /**
+       * Sets up a moving tooltip that displays
+       * the construction year of the hovered building.
+       */
+      function setupHoverTooltip(layerView) {
+        let highlight;
+        const tooltip = createTooltip();
+
+        const hitTest = promiseUtils.debounce((event) => {
+          return viewElement.hitTest(event).then((hit) => {
+            const result = hit.results.find((r) => r.graphic.layer === layer);
+            return result ? { graphic: result.graphic, screenPoint: hit.screenPoint } : null;
+          });
+        });
+
+        viewElement.addEventListener("arcgisViewPointerMove", async (event) => {
+          try {
+            const hit = await hitTest(event.detail);
+
+            if (highlight) {
+              highlight.remove();
+              highlight = null;
+            }
+
+            if (hit) {
+              highlight = layerView.highlight(hit.graphic);
+              tooltip.show(hit.screenPoint, `Built in ${hit.graphic.getAttribute("CNSTRCT_YR")}`);
+            } else {
+              tooltip.hide();
+            }
+          } catch (error) {
+            if (error.name !== "AbortError") {
+              console.error("Unexpected hitTest error:", error);
+            }
+            // Ignore AbortError silently
+          }
+        });
+      }
+
+      /**
+       * Creates a tooltip to display a the construction year of a building.
+       */
+      function createTooltip() {
+        const tooltip = document.createElement("div");
+        tooltip.className = "tooltip";
+        tooltip.setAttribute("role", "tooltip");
+
+        const text = document.createElement("div");
+        tooltip.appendChild(text);
+
+        viewElement.appendChild(tooltip);
+
+        let x = 0,
+          y = 0,
+          targetX = 0,
+          targetY = 0,
+          visible = false;
+
+        function move() {
+          x += (targetX - x) * 0.1;
+          y += (targetY - y) * 0.1;
+          if (Math.abs(targetX - x) < 1 && Math.abs(targetY - y) < 1) {
+            x = targetX;
+            y = targetY;
+          } else {
+            requestAnimationFrame(move);
+          }
+          tooltip.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
+        }
+
+        return {
+          show: (pt, str) => {
+            if (!visible) [x, y] = [pt.x, pt.y];
+            [targetX, targetY] = [pt.x, pt.y];
+            tooltip.style.opacity = 1;
+            text.textContent = str;
+            visible = true;
+            move();
+          },
+          hide: () => {
+            tooltip.style.opacity = 0;
+            visible = false;
+          },
+        };
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Intro to TileLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <calcite-shell>
+      <arcgis-map center="-107.26956, 38.72277" zoom="11">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-layer-list slot="top-right"></arcgis-layer-list>
+      </arcgis-map>
+    </calcite-shell>
+    <script type="module">
+      // Import Map, TileLayer, and PopupTemplate classes from the CDN.
+      const [Map, TileLayer, PopupTemplate] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/TileLayer.js",
+        "@arcgis/core/PopupTemplate.js",
+      ]);
+
+      const layer = new TileLayer({
+        // auto-casts as a new PortalItem()
+        portalItem: { id: "91bedb6323694277bc90e3e666296ae2" },
+      });
+
+      const map = new Map({
+        basemap: "topo-vector",
+        layers: [layer],
+      });
+
+      // Assign the Map component to the viewElement variable.
+      const viewElement = document.querySelector("arcgis-map");
+
+      // Assign the Map instance to the component's map property.
+      viewElement.map = map;
+
+      // Wait for the layer to be ready for use.
+      await viewElement.whenLayerView(layer);
+
+      // Find the sublayer matching a particular title.
+      const sublayer = layer.allSublayers.find((sublayer) => {
+        return sublayer.title === "Map Unit Polygons - CO_202310";
+      });
+
+      // Create a PopupTemplate instance.
+      const popupTemplate = new PopupTemplate({
+        title: "{AREASYMBOL}",
+        content: [
+          {
+            type: "fields",
+            fieldInfos: [
+              { fieldName: "MUSYM", label: "Map Unit Polygons" },
+              { fieldName: "SPATIALVER", label: "Version" },
+            ],
+          },
+        ],
+      });
+
+      // Assign the PopupTemplate instance to
+      // the sublayer's popupTemplate property.
+      sublayer.popupTemplate = popupTemplate;
+    </script>
+  </body>
+</html>

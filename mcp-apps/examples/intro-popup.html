@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Intro to popup component | Sample | ArcGIS Maps SDK for JavaScript</title>
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Set the popup-disabled property on the map component -->
+    <arcgis-map
+      basemap="streets-navigation-vector"
+      zoom="12"
+      center="-71.6899, 43.7598"
+      popup-disabled>
+      <!-- Add the popup component to the default slot -->
+      <arcgis-popup slot="popup"></arcgis-popup>
+      <calcite-panel
+        slot="top-left"
+        heading="Click any location on the map to see its street address.">
+      </calcite-panel>
+    </arcgis-map>
+
+    <script type="module">
+      const locator = await $arcgis.import("@arcgis/core/rest/locator.js");
+      // Set up a locator url using the world geocoding service
+      const locatorUrl = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer";
+      // Get a reference to the map component
+      const viewElement = document.querySelector("arcgis-map");
+      // Get a reference to the popup component
+      const popupComponent = document.querySelector("arcgis-popup");
+      // Listen for when the component is ready
+      await viewElement.viewOnReady();
+      await popupComponent.componentOnReady();
+      /*******************************************************************
+       * This click event sets generic content on the popup not tied to
+       * a layer, graphic, or popupTemplate. The location of the point is
+       * used as input to a reverse geocode method and the resulting
+       * address is printed to the popup content.
+       *******************************************************************/
+      viewElement.addEventListener("arcgisViewClick", (event) => {
+        const { mapPoint } = event.detail;
+        const lat = Math.round(mapPoint.latitude * 1000) / 1000;
+        const lon = Math.round(mapPoint.longitude * 1000) / 1000;
+        // Set the location of the popup to the clicked location
+        popupComponent.location = mapPoint;
+        // Set the popup's title to the coordinates of the location
+        popupComponent.heading = `Reverse geocode: [${lon}, ${lat}]`;
+        popupComponent.open = true;
+        const params = {
+          location: mapPoint,
+        };
+        // Execute a reverse geocode using the clicked location
+        locator
+          .locationToAddress(locatorUrl, params)
+          .then((response) => {
+            // If an address is successfully found, show it in the popup's content
+            popupComponent.content = response.address;
+          })
+          .catch(() => {
+            // If the promise fails and no result is found, show a generic message
+            popupComponent.content = "No address was found for this location";
+          });
+      });
+    </script>
+  </body>
+</html>

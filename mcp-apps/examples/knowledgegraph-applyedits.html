@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+  <title>Edit Knowledge Graph Data | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+  <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+  <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+  <script type="module">
+    const [knowledgeGraphService, Entity, Relationship] = await $arcgis.import([
+      "@arcgis/core/rest/knowledgeGraphService.js",
+      "@arcgis/core/rest/knowledgeGraph/Entity.js",
+      "@arcgis/core/rest/knowledgeGraph/Relationship.js",
+    ]);
+
+    /**
+     * Credentials to sign in to the knowledge graph service:
+     * Username: editor01
+     * Password: S7#i2LWmYH75
+     */
+    const url =
+      "https://sampleserver7.arcgisonline.com/server/rest/services/Hosted/BumbleBeeEdits/KnowledgeGraphServer";
+
+    const deleteSelect = document.getElementById("delete-entity");
+    const originSelect = document.getElementById("origin-entity");
+    const destSelect = document.getElementById("destination-entity");
+    const updateSelect = document.getElementById("update-entity");
+
+    //get the link chart component and wait till it's ready
+    const linkChartComponent = document.querySelector("arcgis-link-chart");
+    await linkChartComponent.viewOnReady();
+    const lcView = linkChartComponent.view;
+    const linkChart = lcView.map;
+    const linkChartLayer = linkChart.activeLinkChartLayer
+    //Fetch the knowledge graph
+    const knowledgeGraph = await knowledgeGraphService.fetchKnowledgeGraph(url);
+    linkChartLayer.layers.forEach((sublayer) => {
+      sublayer.popupTemplate = sublayer.createPopupTemplate();
+      if (sublayer.title == "Observation") {
+        sublayer.labelingInfo = [
+          {
+            labelExpressionInfo: {
+              expression: `$feature.species_guess`,
+            },
+          },
+        ];
+      }
+    });
+
+    //get a subset of records to initialize the link chart and the edit form
+    const initialRecords = await knowledgeGraphService.executeQuery(knowledgeGraph, {
+      openCypherQuery:
+        `MATCH (u:User)-[r]-(o:Observation) WHERE  o.species_guess <> '' WITH u, collect(r) as rels, collect(o) as u_obs WHERE u.name <> null RETURN DISTINCT u, rels[..3], u_obs[..3] as observations LIMIT 10`,
+    });
+
+    // let newRecords = [];
+    let observation = new Set();
+    let user = new Set();
+
+    for (const row in initialRecords.resultRows) {
+      const record = initialRecords.resultRows[row];
+      user.add(
+        `<calcite-option class="${record[0].id}" value="${record[0].id}" ${row == 0 ? "selected" : ""}>${record[0].properties.name}</calcite-option>`,
+      );
+      record[2].forEach((o) => {
+        console.log(o)
+        observation.add(
+          `<calcite-option class="${o.id}" value="${o.id}" ${row == 0 ? "selected" : ""}>${o.properties.species_guess}</calcite-option>`,
+        );
+      });
+    }
+
+    originSelect.innerHTML = [...user].join();
+    destSelect.innerHTML = [...observation].join();
+    updateSelect.innerHTML = [...observation].join();
+    deleteSelect.innerHTML = [...observation].join();
+
+
+    //Add the a new relationship to the graph
+    const addRelationship = () => {
+      const originId = document.getElementById("origin-entity").selectedOption.value;
+      const destinationId = document.getElementById("destination-entity").selectedOption.value;
+      //create the relationship
+      const newRelationship = new Relationship({
+        typeName: "Observed",
+        originId: originId,
+        destinationId: destinationId,
+        properties: {},
+      });
+      //apply the edit to the graph
+      knowledgeGraphService
+        .executeApplyEdits(knowledgeGraph, {
+          relationshipAdds: [newRelationship],
+        })
+        .then((results) => {
+          linkChart.addRecords([{ id: results.editResults[0].adds[0].id, typeName: "Observed" }]);
+        });
+    };
+
+    const addEntity = () => {
+      const speciesGuess = document.getElementById("add-species-guess").value;
+      const newEntity = new Entity({
+        typeName: "Observation",
+        properties: {
+          species_guess: speciesGuess,
+        },
+      });
+
+      knowledgeGraphService
+        .executeApplyEdits(knowledgeGraph, {
+          entityAdds: [newEntity],
+        })
+        .then((results) => {
+          linkChart.addRecords([
+            { id: results.editResults[0].adds[0].id, typeName: "Observation" },
+          ]);
+          const observation = `<calcite-option class="${results.editResults[0].adds[0].id}" value="${results.editResults[0].adds[0].id}">${speciesGuess}</calcite-option>`;
+          destSelect.innerHTML += observation;
+          updateSelect.innerHTML += observation;
+          deleteSelect.innerHTML += observation;
+        });
+    };
+
+    //update an existing entity in the graph.
+    const updateEntity = () => {
+      const id = document.getElementById("update-entity").selectedOption.value;
+      const updatedSpecies = document.getElementById("update-species-guess").value;
+
+      const entityUpdate = new Entity({
+        typeName: "Observation",
+        id: id,
+        properties: {
+          species_guess: updatedSpecies,
+        },
+      });
+
+      knowledgeGraphService
+        .executeApplyEdits(knowledgeGraph, {
+          entityUpdates: [entityUpdate],
+        })
+        .then((editResult) => {
+          //update the label in the form
+          document.querySelectorAll("." + CSS.escape(id)).forEach((e) => {
+            e.innerText = updatedSpecies;
+          });
+          //update the link chart
+          linkChart.refreshLinkChartData([id]);
+        });
+    };
+
+    //delete an existing entity from the graph
+    const deleteEntity = () => {
+      const id = document.getElementById("delete-entity").selectedOption.value;
+      const elementClass = document.getElementById("delete-entity").selectedOption.className;
+
+      knowledgeGraphService
+        .executeApplyEdits(knowledgeGraph, {
+          entityDeletes: [
+            {
+              typeName: "Observation",
+              ids: [id],
+            },
+          ],
+          options: {
+            cascadeDelete: true,
+          },
+        })
+        .then((editResult) => {
+          //remove the entity from the form
+          document.querySelectorAll("." + CSS.escape(elementClass)).forEach((e) => {
+            e.remove();
+          });
+          //remove the entity from the link chart
+          linkChart.removeRecords([{ id: id, typeName: "Observation" }]);
+        });
+    };
+
+    document.getElementById("add-entity-btn").addEventListener("click", addEntity);
+    document.getElementById("update-btn").addEventListener("click", updateEntity);
+    document.getElementById("delete-btn").addEventListener("click", deleteEntity);
+    document.getElementById("add-relationship-btn").addEventListener("click", addRelationship);
+  </script>
+</head>
+
+<body>
+  <calcite-shell>
+    <calcite-shell-panel id="search-container" slot="panel-start">
+      <calcite-action-bar slot="action-bar">
+        <calcite-action id="search-menu" text="Edit" icon="pencil"></calcite-action>
+      </calcite-action-bar>
+      <calcite-panel heading="Edit" id="panel-start">
+        <calcite-block heading="Add Observation" collapsible expanded>
+          <calcite-label>
+            Species Guess
+            <calcite-input-text id="add-species-guess" placeholder="bumble bee" value="bumble bee"></calcite-input-text>
+          </calcite-label>
+          <calcite-label>
+            Place Guess
+            <calcite-input-text id="add-place-guess" placeholder="California" value="California"></calcite-input-text>
+          </calcite-label>
+          <calcite-button width="full" appearance="transparent" id="add-entity-btn">Add Observation</calcite-button>
+        </calcite-block>
+        <calcite-block heading="Add 'Observed' Relationship" collapsible expanded>
+          <calcite-label>Origin Entity (User)
+            <calcite-select id="origin-entity" placeholder="select one"></calcite-select>
+          </calcite-label>
+          <calcite-label>Destination Entity (Observation)
+            <calcite-select id="destination-entity" placeholder="select one"></calcite-select>
+          </calcite-label>
+          <calcite-button width="full" appearance="transparent" id="add-relationship-btn">Add "Observed"
+            relationship</calcite-button>
+        </calcite-block>
+        <calcite-block heading="Update Observation" collapsible expanded>
+          <calcite-label>Destination Entity (Observation)
+            <calcite-select id="update-entity" placeholder="select one"></calcite-select>
+          </calcite-label>
+          <div id="update properties">
+            <calcite-label>
+              Species Guess
+              <calcite-input-text id="update-species-guess" placeholder="bumble bee" value=""></calcite-input-text>
+            </calcite-label>
+            <calcite-button width="full" appearance="transparent" id="update-btn">Update Observation</calcite-button>
+          </div>
+        </calcite-block>
+        <calcite-block heading="Delete Observation" collapsible expanded>
+          <calcite-label>Destination Entity (Observation)
+            <calcite-select id="delete-entity" placeholder="select one"></calcite-select>
+          </calcite-label>
+          <calcite-button width="full" appearance="transparent" id="delete-btn">Delete Observation</calcite-button>
+        </calcite-block>
+      </calcite-panel>
+    </calcite-shell-panel>
+    <calcite-panel>
+      <arcgis-link-chart
+        service-url="https://sampleserver7.arcgisonline.com/server/rest/services/Hosted/BumbleBeeEdits/KnowledgeGraphServer"
+        base-cypher-query="MATCH (u:User)-[r]-(o:Observation) WHERE  o.species_guess <> '' WITH u, collect(r) as rels, collect(o) as u_obs WHERE u.name <> null RETURN DISTINCT u, rels[..3], u_obs[..3] as observations LIMIT 10">
+      </arcgis-link-chart>
+    </calcite-panel>
+  </calcite-shell>
+</body>
+
+</html>

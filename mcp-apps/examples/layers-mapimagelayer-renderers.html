@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>MapImageLayer - set renderers on sublayers | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+  </head>
+
+  <body>
+    <calcite-shell>
+      <arcgis-map center="-83.114, 36.921" zoom="5">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+      </arcgis-map>
+    </calcite-shell>
+    <script type="module">
+      const [
+        Map,
+        MapImageLayer,
+        SimpleRenderer,
+        SimpleFillSymbol,
+        SimpleLineSymbol,
+        SimpleMarkerSymbol,
+      ] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/MapImageLayer.js",
+        "@arcgis/core/renderers/SimpleRenderer.js",
+        "@arcgis/core/symbols/SimpleFillSymbol.js",
+        "@arcgis/core/symbols/SimpleLineSymbol.js",
+        "@arcgis/core/symbols/SimpleMarkerSymbol.js",
+      ]);
+
+      // Simple renderer with a simple marker symbol for the cities sublayer.
+      const citiesRenderer = new SimpleRenderer({
+        label: "Cities",
+        symbol: new SimpleMarkerSymbol({
+          color: "white",
+          outline: new SimpleLineSymbol({
+            width: 1,
+            color: "gray",
+          }),
+          size: 4,
+          style: "circle",
+        }),
+      });
+
+      // Simple renderer with a simple fill symbol for the states sublayer.
+      const statesRenderer = new SimpleRenderer({
+        label: "State boundaries",
+        symbol: new SimpleFillSymbol({
+          outline: new SimpleLineSymbol({
+            color: "gray",
+            width: 1,
+          }),
+          style: "solid",
+        }),
+      });
+
+      // Simple renderer with a simple line symbol for the highways sublayer.
+      const highwaysRenderer = new SimpleRenderer({
+        label: "Interstate highway",
+        symbol: new SimpleLineSymbol({
+          color: "white",
+          style: "solid",
+          width: 0.5,
+        }),
+      });
+      // Create the MapImageLayer and define opacity and renderer for each sublayer.
+      const layer = new MapImageLayer({
+        url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer",
+        sublayers: [
+          {
+            id: 2,
+            opacity: 0.4,
+            renderer: statesRenderer,
+          },
+          {
+            id: 1,
+            opacity: 0.8,
+            renderer: highwaysRenderer,
+          },
+          {
+            id: 0,
+            opacity: 0.6,
+            renderer: citiesRenderer,
+          },
+        ],
+      });
+      // Create the Map instance and add the MapImageLayer.
+      const map = new Map({
+        basemap: "dark-gray-vector",
+        layers: [layer],
+      });
+
+      // Assign the map to the map component.
+      document.querySelector("arcgis-map").map = map;
+    </script>
+  </body>
+</html>

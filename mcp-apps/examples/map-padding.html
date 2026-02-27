@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Map padding | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+
+      arcgis-map {
+        /* adjusts the padding to the right-side map layout slots
+        so any components shown in the right-side slots are not obscured by the sidebar */
+        --arcgis-layout-overlay-space-right: 300px;
+      }
+
+      #sidebar {
+        z-index: 99;
+        position: absolute;
+        top: 0;
+        right: 0;
+        height: 100%;
+        background: var(--calcite-color-border-ghost);
+        /* the width of the sidebar matches the padding set on the map */
+        width: 300px;
+      }
+
+      #text {
+        padding: 10px;
+        color: var(--calcite-color-text-inverse);
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map basemap="topo-vector" zoom="16" center="-74.045459, 40.690083">
+      <!-- These controls will respect the CSS variable set on arcgis-map -->
+      <arcgis-zoom slot="top-right"></arcgis-zoom>
+      <arcgis-home slot="top-right"></arcgis-home>
+      <div id="sidebar">
+        <div id="text">
+          <h1>Liberty Island</h1>
+          <p>
+            Note that setting the padding makes the center and extent work off a subsection of the
+            full view.
+          </p>
+          <p>Try to resize the window to get a better understanding.</p>
+        </div>
+      </div>
+    </arcgis-map>
+    <script type="module">
+      // Get a reference to the map component
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.padding = {
+        // offset the center of the map by 300px on the right
+        right: 300,
+      };
+    </script>
+  </body>
+</html>

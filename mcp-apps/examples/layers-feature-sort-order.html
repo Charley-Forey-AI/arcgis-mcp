@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Configure feature sort order | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map item-id="bbebcc87fa704dc3a505050fb1bb52f5">
+      <div id="mylegend" slot="bottom-left">
+        <calcite-action
+          active
+          id="sort-order"
+          text="Sort features with small values on top"
+          text-enabled
+          icon="sort-ascending-arrow"
+          appearance="solid"
+          scale="s">
+        </calcite-action>
+        <arcgis-legend></arcgis-legend>
+      </div>
+    </arcgis-map>
+    <script type="module">
+      const Map = await $arcgis.import("@arcgis/core/Map.js");
+
+      // Get a reference to the Map component element.
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.viewOnReady();
+      const layer = viewElement.map.layers.getItemAt(0);
+
+      // Sort features by average traffic count
+      // large symbols on top - small symbols on the bottom
+      layer.orderBy = [
+        {
+          field: "AADT",
+          order: "descending", // "descending" | "ascending"
+        },
+      ];
+
+      // logic for toggling ascending and descending order
+      const sortOrder = document.getElementById("sort-order");
+      sortOrder.addEventListener("click", () => {
+        // Sort features by average traffic count
+        // large symbols on top - small symbols on the bottom
+        const order = layer.orderBy[0].order === "ascending" ? "descending" : "ascending";
+        layer.orderBy = [
+          {
+            field: "AADT",
+            order,
+          },
+        ];
+
+        // toggles ui icon and description for the sortOrder button
+        if (order === "ascending") {
+          sortOrder.text = "Sort features with large values on top";
+          sortOrder.icon = `sort-descending-arrow`;
+        } else {
+          sortOrder.text = "Sort features with small values on top";
+          sortOrder.icon = `sort-ascending-arrow`;
+        }
+      });
+    </script>
+  </body>
+</html>

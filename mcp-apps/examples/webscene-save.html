@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Save a web scene | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      calcite-panel {
+        width: 250px;
+        margin: 0 auto;
+      }
+
+      calcite-block {
+        margin-block: 0;
+      }
+
+      calcite-alert {
+        --calcite-alert-width: 550px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene
+      basemap="satellite"
+      ground="world-elevation"
+      camera-position="14.5260, 40.6966, 2179.78"
+      camera-heading="334.27"
+      camera-tilt="78.43">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <arcgis-expand slot="top-left">
+        <arcgis-basemap-gallery></arcgis-basemap-gallery>
+      </arcgis-expand>
+      <calcite-panel heading="Save WebScene" slot="top-right">
+        <calcite-block expanded label="Scene title">
+          <calcite-label
+            >Title
+            <calcite-input
+              id="webSceneTitle"
+              type="text"
+              value="WebScene Saving Sample"></calcite-input>
+          </calcite-label>
+          <calcite-button id="saveWebScene" width="full" value="Save">Save</calcite-button>
+        </calcite-block>
+      </calcite-panel>
+      <calcite-alert id="alert" kind="success" icon label="WebScene saving information">
+        <div slot="title" id="outcome"></div>
+        <div slot="message" id="infoMessage"></div>
+        <calcite-link target="_blank" id="saveUrl"> Open web scene (new window) </calcite-link>
+      </calcite-alert>
+    </arcgis-scene>
+    <script type="module">
+      // DOM Elements
+      const viewElement = document.querySelector("arcgis-scene");
+      const alert = document.querySelector("calcite-alert");
+      const sceneTitle = document.getElementById("webSceneTitle");
+      const saveButton = document.getElementById("saveWebScene");
+      const sceneURL = document.getElementById("saveUrl");
+      const outcome = document.getElementById("outcome");
+
+      // Wait for the view to fully initialize
+      await viewElement.viewOnReady();
+
+      // Triggers scene saving
+      saveButton.addEventListener("click", async () => {
+        sceneTitle.disabled = true;
+        saveButton.disabled = true;
+
+        // item automatically casts to a PortalItem instance by saveAs
+        const item = {
+          title: sceneTitle.value,
+        };
+
+        // Get a reference to the WebScene
+        const scene = viewElement.map;
+        // Update properties of the WebScene related to the view.
+        // This should be called just before saving a webscene.
+        await scene.updateFrom(viewElement.view);
+
+        try {
+          const portalItem = await scene.saveAs(item);
+          // Saved successfully
+          // Link to the newly-created web scene item
+          const itemPageUrl = portalItem.portal.url + "/home/item.html?id=" + portalItem.id;
+          sceneURL.href = itemPageUrl;
+          statusMessage("", true);
+        } catch (error) {
+          // Save didn't work correctly
+          statusMessage("Error: " + error, false);
+        }
+      });
+
+      // HELPER FUNCTIONS
+
+      // Display an alert with links to the new scene or encountered errors
+      function statusMessage(info, success) {
+        const infoMessage = document.getElementById("infoMessage");
+        // Clear the message content
+        infoMessage.textContent = "";
+
+        if (success) {
+          alert.kind = "success";
+          outcome.textContent = "Scene saved";
+          sceneURL.slot = "link";
+
+          // Create bold element
+          const boldElement = document.createElement("b");
+          boldElement.textContent = sceneTitle.value;
+
+          // Append text + bold element
+          infoMessage.append("Successfully saved as ", boldElement);
+        } else {
+          alert.kind = "danger";
+          outcome.textContent = "Saving failed";
+          sceneURL.slot = null;
+
+          infoMessage.textContent = info;
+        }
+        alert.open = true;
+        saveButton.disabled = false;
+        sceneTitle.disabled = false;
+      }
+    </script>
+  </body>
+</html>

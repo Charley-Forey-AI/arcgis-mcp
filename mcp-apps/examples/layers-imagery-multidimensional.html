@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Multidimensional ImageryTileLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      calcite-block {
+        width: 240px;
+        min-height: 360px;
+      }
+
+      arcgis-slider {
+        height: 160px;
+        width: 100%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map center="-100, 40" zoom="2">
+      <arcgis-zoom slot="top-left"> </arcgis-zoom>
+      <arcgis-expand slot="top-left">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+      <arcgis-time-slider mode="instant" time-visible slot="bottom-left"></arcgis-time-slider>
+      <calcite-block
+        expanded
+        heading="Multidimensional data filter"
+        slot="top-right"
+        description="Showing soil temp and moisture from 10/22/15 8pm - 10/23/15 11am">
+        <calcite-select id="variable-name-select" label-text="Select a variable:">
+          <calcite-option value="soilw@dbll" selected>Soil moisture</calcite-option>
+          <calcite-option value="tsoil@dbll">Soil temperature</calcite-option> </calcite-select
+        ><br />
+        <calcite-label>
+          Altitude:
+          <arcgis-slider
+            id="altitude-slider"
+            min="0"
+            max="3"
+            values="0"
+            steps="0, 0.01, 0.04, 0.1, 0.3, 0.6, 1, 1.6, 3"
+            layout="vertical"
+            show-range-labels
+            value-labels-display="always"></arcgis-slider>
+        </calcite-label>
+      </calcite-block>
+      <arcgis-expand expand-icon="layers" slot="bottom-right">
+        <arcgis-layer-list></arcgis-layer-list>
+      </arcgis-expand>
+    </arcgis-map>
+
+    <script type="module">
+      const [Map, ImageryTileLayer, MultidimensionalSubset] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/ImageryTileLayer.js",
+        "@arcgis/core/layers/support/MultidimensionalSubset.js",
+      ]);
+
+      // variable names soilw@dbll for soil moisture and tsoil@dbll for soil temperature
+      let variableName = "soilw@dbll";
+      // Set the multidimensionalSubset on the layer. Limit the
+      // stdZ dimension from 0 - 1.6m for the soil temperature variable.
+      // Nothing is displayed at 3 meters when tsoil@dbll variable info is being displayed
+      const multidimensionalSubset = new MultidimensionalSubset({
+        subsetDefinitions: [
+          {
+            variableName: "soilw@dbll", // soil moisture
+            dimensionName: "StdTime",
+            values: [1445569200000, 1445623200000],
+            isSlice: false,
+          },
+          {
+            variableName: "soilw@dbll", // soil moisture
+            dimensionName: "StdZ",
+            values: [0, 3],
+            isSlice: false,
+          },
+          {
+            variableName: "tsoil@dbll", // soil temperature
+            dimensionName: "StdTime",
+            values: [1445569200000, 1445623200000],
+            isSlice: false,
+          },
+          {
+            variableName: "tsoil@dbll", // soil temperature
+            dimensionName: "StdZ",
+            values: [0, 1.6],
+            isSlice: false,
+          },
+        ],
+      });
+
+      const layer = new ImageryTileLayer({
+        portalItem: {
+          id: "b231d6901d474f6584bdb9655ef2be4e",
+        },
+        title: "Soil temp, moisture",
+        multidimensionalSubset,
+      });
+      const map = new Map({
+        basemap: {
+          portalItem: {
+            id: "899dc138d0854c1e8d746159ff761cd6",
+          },
+        },
+        layers: [layer],
+      });
+
+      const altitudeSlider = document.getElementById("altitude-slider");
+      altitudeSlider.labelFormatter = (value) => `${value}m`;
+
+      // Update layer's stdZ dimension on the map to show the soil temp
+      // or soil moisture at that altitude as user adjust slider handle
+      altitudeSlider.addEventListener("arcgisChange", () => {
+        if (!layer.loaded) {
+          return;
+        }
+        // set the altitude or StdZ dimension of the layer corresponding to the slider's thumb location
+        const multidimensionalDefinition = layer.multidimensionalDefinition;
+        // find the stdZ dimension definition from the layer's multidimensionalDefinition
+        const depthDef = multidimensionalDefinition.find((def) => def.dimensionName === "StdZ");
+
+        // set the slider thumb to the first altitude found in the StdZ altitude
+        if (depthDef.values[0] === altitudeSlider.values[0]) {
+          return;
+        }
+
+        depthDef.values[0] = altitudeSlider.values[0];
+        layer.multidimensionalDefinition = multidimensionalDefinition;
+      });
+
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.map = map;
+      viewElement.constraints = {
+        minScale: 36978595,
+      };
+
+      // wait for the view to be ready
+      await viewElement.viewOnReady();
+
+      const timeSlider = document.querySelector("arcgis-time-slider");
+      await viewElement.whenLayerView(layer);
+
+      // get the time dimension dates from the layer's serviceRasterInfo
+      // and set the timeSlider's fullTimeExtent and stops
+      const epochDates =
+        layer.serviceRasterInfo.multidimensionalInfo.variables[0].dimensions[0].values;
+      const dates = epochDates.map((item) => new Date(item));
+
+      // users can visualize daily wind information for the month of Oct 2011 using time slider
+      timeSlider.fullTimeExtent = {
+        start: new Date(dates[0]), // Oct 22, 2015 8 pm
+        end: new Date(dates[dates.length - 1]), // Oct 23, 2015 11am
+      };
+
+      timeSlider.stops = {
+        dates,
+      };
+
+      // listen to variable calcite-select change event and update layer's multidimensionalDefinition
+      // and renderer properties to reflect the variable selected.
+      const variableNameSelect = document.getElementById("variable-name-select");
+      variableNameSelect.addEventListener("calciteSelectChange", () => {
+        if (!layer.loaded) {
+          return;
+        }
+        variableName = variableNameSelect.value;
+        changeVariableName(variableName);
+      });
+      // Change the layer's variable name corresponding the selected variable in the calcite-select
+      // variable names in this case represent soil moisture or soil temperature
+      function changeVariableName(variableName) {
+        const multidimensionalDefinition = layer.multidimensionalDefinition;
+
+        // filter the data by the variable that user selected set the layer's
+        // multidimensionalDefinition by changing the dimensional definition variable name.
+        multidimensionalDefinition.forEach((def) => (def.variableName = variableName));
+        layer.multidimensionalDefinition = multidimensionalDefinition;
+
+        // update statistics for the layer's stretch renderer to match
+        // statistics associated with the chosen variable
+        // layer.serviceRasterInfo.multidimensionalInfo - returns multidimensional info from the service
+        const renderer = layer.renderer.clone();
+        const dimensions = layer.serviceRasterInfo.multidimensionalInfo;
+        const variable = dimensions.variables.find((variable) => variable.name === variableName);
+        renderer.customStatistics = variable.statistics;
+        layer.renderer = renderer;
+      }
+    </script>
+  </body>
+</html>

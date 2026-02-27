@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>MediaLayer with animated gif | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+  </head>
+
+  <body>
+    <calcite-shell>
+      <calcite-shell-panel slot="panel-end">
+        <calcite-block expanded heading="Animation Options">
+          <calcite-label layout="inline">
+            <calcite-switch id="playingSwitch" checked> </calcite-switch>
+            playing
+          </calcite-label>
+
+          <calcite-label>
+            duration
+            <calcite-input-number id="durationInput" value="4" min="0" suffix-text="seconds">
+            </calcite-input-number>
+          </calcite-label>
+
+          <calcite-label>
+            repeatType
+            <calcite-select id="repeatTypeSelect">
+              <calcite-option value="loop">loop</calcite-option>
+              <calcite-option value="none">none</calcite-option>
+              <calcite-option value="oscillate" selected>oscillate</calcite-option>
+            </calcite-select>
+          </calcite-label>
+
+          <calcite-label>
+            repeatDelay
+            <calcite-input-number id="repeatDelayInput" value="0" suffix-text="seconds">
+            </calcite-input-number>
+          </calcite-label>
+        </calcite-block>
+      </calcite-shell-panel>
+      <arcgis-map center="-87, 30" scale="25000000">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+      </arcgis-map>
+    </calcite-shell>
+    <script type="module">
+      const [
+        Color,
+        Extent,
+        Polygon,
+        SpatialReference,
+        Graphic,
+        FeatureLayer,
+        MediaLayer,
+        ExtentAndRotationGeoreference,
+        ImageElement,
+        Map,
+        SimpleRenderer,
+        SimpleFillSymbol,
+        SimpleLineSymbol,
+        ColorBackground,
+      ] = await $arcgis.import([
+        "@arcgis/core/Color.js",
+        "@arcgis/core/geometry/Extent.js",
+        "@arcgis/core/geometry/Polygon.js",
+        "@arcgis/core/geometry/SpatialReference.js",
+        "@arcgis/core/Graphic.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/layers/MediaLayer.js",
+        "@arcgis/core/layers/support/ExtentAndRotationGeoreference.js",
+        "@arcgis/core/layers/support/ImageElement.js",
+        "@arcgis/core/Map.js",
+        "@arcgis/core/renderers/SimpleRenderer.js",
+        "@arcgis/core/symbols/SimpleFillSymbol.js",
+        "@arcgis/core/symbols/SimpleLineSymbol.js",
+        "@arcgis/core/webmap/background/ColorBackground.js",
+      ]);
+      // a url to an animated gif from the GOES satellite available from NOAA
+      const imageUrl =
+        "https://cdn.star.nesdis.noaa.gov/GOES19/ABI/CONUS/GEOCOLOR/GOES19-CONUS-GEOCOLOR-625x375.gif";
+
+      // create an image element with a georeference
+      const imageElement = new ImageElement({
+        image: imageUrl,
+        georeference: new ExtentAndRotationGeoreference({
+          extent: new Extent({
+            spatialReference: new SpatialReference({
+              wkid: 102498,
+            }),
+            xmin: -3640000,
+            ymin: 1590000,
+            xmax: 1400000,
+            ymax: 4600000,
+          }),
+        }),
+      });
+
+      // set the animation options
+      imageElement.animationOptions = {
+        playing: true,
+        duration: 4,
+        repeatType: "oscillate",
+        repeatDelay: 0,
+      };
+      // create a media layer with the image element as the source
+      const mediaLayer = new MediaLayer({
+        source: [imageElement],
+      });
+      // create a simple renderer for the states feature layer
+      const statesRenderer = new SimpleRenderer({
+        symbol: new SimpleFillSymbol({
+          color: "#98816c",
+          style: "solid",
+          outline: new SimpleLineSymbol({
+            width: 0.5,
+            color: "white",
+          }),
+        }),
+      });
+
+      // create a feature layer to show state boundaries
+      const statesFeatureLayer = new FeatureLayer({
+        portalItem: {
+          id: "56633b40c1744109a265af1dba673535",
+        },
+        minScale: 0,
+        popupEnabled: false,
+        renderer: statesRenderer,
+      });
+
+      // create a graphic to use as the background for the map
+      const backgroundPolygonGraphic = new Graphic({
+        geometry: new Polygon({
+          rings: [
+            [
+              [-180, -90],
+              [-180, 90],
+              [180, 90],
+              [180, -90],
+              [-180, -90],
+            ],
+          ],
+        }),
+      });
+
+      // create a simple renderer for the background feature layer
+      const backgroundRenderer = new SimpleRenderer({
+        symbol: new SimpleFillSymbol({
+          color: "#0c2a3b",
+          style: "solid",
+          outline: new SimpleLineSymbol({
+            width: 0.5,
+            color: "white",
+          }),
+        }),
+      });
+
+      // create a feature layer to show the background
+      const backgroundFeatureLayer = new FeatureLayer({
+        source: [backgroundPolygonGraphic],
+        objectIdField: "OBJECTID",
+        fields: [
+          {
+            name: "OBJECTID",
+            type: "oid",
+          },
+        ],
+        renderer: backgroundRenderer,
+      });
+
+      const viewElement = document.querySelector("arcgis-map");
+      viewElement.map = new Map({
+        layers: [backgroundFeatureLayer, statesFeatureLayer, mediaLayer],
+      });
+
+      viewElement.background = new ColorBackground({
+        color: new Color([0, 0, 0]),
+      });
+      viewElement.spatialReference = new SpatialReference({
+        wkid: 102498,
+      });
+      // get a reference to the duration input
+      const durationInput = document.getElementById("durationInput");
+
+      // get a reference to the playing switch
+      const playingSwitch = document.getElementById("playingSwitch");
+
+      // get a reference to the repeat delay input
+      const repeatDelayInput = document.getElementById("repeatDelayInput");
+
+      // get a reference to the repeat type select
+      const repeatTypeSelect = document.getElementById("repeatTypeSelect");
+
+      // update the image element animation options when the playing switch is toggled
+      playingSwitch?.addEventListener("calciteSwitchChange", () => {
+        imageElement.animationOptions = {
+          ...imageElement.animationOptions,
+          playing: !imageElement.animationOptions?.playing,
+        };
+      });
+
+      // update the image element animation options when the duration input changes
+      durationInput?.addEventListener("calciteInputNumberChange", (event) => {
+        const target = event.target;
+        imageElement.animationOptions = {
+          ...imageElement.animationOptions,
+          duration: Number(target?.value),
+        };
+      });
+
+      // update the image element animation options when the repeat type select changes
+      repeatTypeSelect?.addEventListener("calciteSelectChange", (event) => {
+        const target = event.target;
+        imageElement.animationOptions = {
+          ...imageElement.animationOptions,
+          repeatType: target?.value,
+        };
+      });
+
+      // update the image element animation options when the repeat delay input changes
+      repeatDelayInput?.addEventListener("calciteInputNumberChange", (event) => {
+        const target = event.target;
+        imageElement.animationOptions = {
+          ...imageElement.animationOptions,
+          repeatDelay: Number(target?.value),
+        };
+      });
+    </script>
+  </body>
+</html>

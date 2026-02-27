@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Explore a VoxelLayer using dynamic section | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #panelVoxelControl {
+        max-width: 310px;
+        max-height: calc(100vh - 100px);
+        overflow: auto;
+      }
+
+      arcgis-legend {
+        width: 200px;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-scene item-id="3a922ed0c7a8489ea4fbe8747ac560ba">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <calcite-panel id="panelVoxelControl" style="visibility: hidden" slot="top-right">
+        <calcite-block label="Voxel dynamic section" expanded>
+          <calcite-label
+            >Current Variable:
+            <calcite-select hidden id="selectVariable" label="Current Variable"> </calcite-select>
+          </calcite-label>
+        </calcite-block>
+        <div id="existingSectionsListItem"></div>
+        <div id="dynamicSectionsListItem"></div>
+        <calcite-block label="Additional sections" expanded>
+          <calcite-button id="addDynamicSectionButton" width="full"
+            >Add Dynamic Section
+          </calcite-button>
+        </calcite-block>
+      </calcite-panel>
+      <arcgis-expand slot="bottom-left">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+    </arcgis-scene>
+
+    <script type="module">
+      const VoxelDynamicSection = await $arcgis.import(
+        "@arcgis/core/layers/voxel/VoxelDynamicSection.js",
+      );
+
+      // Get references to DOM elements
+      const viewElement = document.querySelector("arcgis-scene");
+      const panelVoxelControl = document.getElementById("panelVoxelControl");
+      const selectVariable = document.getElementById("selectVariable");
+      const existingSectionsListItem = document.getElementById("existingSectionsListItem");
+      const dynamicSectionsListItem = document.getElementById("dynamicSectionsListItem");
+      const addDynamicSectionButton = document.getElementById("addDynamicSectionButton");
+
+      // Wait for the view to fully initialize
+      await viewElement.viewOnReady();
+      const voxelLayer = viewElement.map.layers.find((layer) => layer.type === "voxel");
+
+      // Wait for the VoxelLayer to be in the component's view
+      await viewElement.whenLayerView(voxelLayer);
+      panelVoxelControl.style.visibility = "visible";
+
+      voxelLayer.popupEnabled = true;
+
+      // Get the volume information of a VoxelLayer
+      const voxelVolume = voxelLayer.getVolume(null);
+      const volumeSize = voxelVolume.sizeInVoxels;
+      const volumeType = voxelVolume.volumeType;
+
+      // Voxel dynamic sections are shown when the renderMode is set to surfaces
+      voxelLayer.renderMode = "surfaces";
+      let dynamicSectionList = [];
+
+      // Get all variables in a VoxelLayer
+      // display it on a dropdown menu
+      for (let i = 0; i < voxelLayer.variables.length; ++i) {
+        const vxlVariable = voxelLayer.variables.getItemAt(i);
+        const item = document.createElement("calcite-option");
+        item.setAttribute("label", voxelLayer.variableStyles.getItemAt(i).label);
+        item.setAttribute("value", vxlVariable.id);
+        if (vxlVariable.id === 0) {
+          item.selected = true;
+          voxelLayer.currentVariableId = vxlVariable.id;
+        }
+        selectVariable.hidden = false;
+        selectVariable.appendChild(item);
+      }
+
+      selectVariable.addEventListener("calciteSelectChange", function () {
+        voxelLayer.currentVariableId = selectVariable.selectedOption.value;
+      });
+
+      // Creates the DOM elements that updates a voxel section's properties
+      function createSectionItem(dynSectionIndex, dynamicSection, addNew, sectionList) {
+        const itemBlock = document.createElement("calcite-block");
+        itemBlock.collapsible = false;
+        itemBlock.expanded = true;
+        itemBlock.heading = dynamicSection.label;
+        itemBlock.classList.add("blockItem");
+        const itemPositionXLabel = document.createElement("calcite-label");
+        const itemPositionXTextNode = document.createTextNode("Section Position (West-East, X):");
+        const itemPositionXSlider = document.createElement("calcite-slider");
+        const itemPositionYLabel = document.createElement("calcite-label");
+        const itemPositionYTextNode = document.createTextNode("Section Position (North-South, Y):");
+        const itemPositionYSlider = document.createElement("calcite-slider");
+        const itemPositionZLabel = document.createElement("calcite-label");
+        // Getting the volume type will help to determine how the point is represented in voxel space.
+        // Point is represented as X,Y,Z if a Volume Type is [X,Y,Z] or [X,Y,Z,T] and represented as X,Y,T if Volume Type is [X,Y,T].
+        const zTextType =
+          volumeType === "xyt"
+            ? "Section Position (Up-Down, T):"
+            : "Section Position (Up-Down, Z):";
+        const itemPositionZTextNode = document.createTextNode(zTextType);
+        const itemPositionZSlider = document.createElement("calcite-slider");
+        const itemOrientationInput = document.createElement("calcite-input");
+        const itemOrientationLabel = document.createElement("calcite-label");
+        const itemTiltInput = document.createElement("calcite-input");
+        const itemTiltLabel = document.createElement("calcite-label");
+        itemPositionXSlider.value = dynamicSection.point[0];
+        itemPositionXSlider.id = "posX_" + dynSectionIndex.toString();
+        itemPositionXSlider.max = volumeSize[0];
+        itemPositionXSlider.label = "Point X";
+        itemPositionXSlider.labelHandles = true;
+        itemPositionYSlider.value = dynamicSection.point[1];
+        itemPositionYSlider.labelHandles = true;
+        itemPositionYSlider.id = "posY_" + dynSectionIndex.toString();
+        itemPositionYSlider.max = volumeSize[1];
+        itemPositionZSlider.value = dynamicSection.point[2];
+        itemPositionZSlider.labelHandles = true;
+        itemPositionZSlider.id = "posZ_" + dynSectionIndex.toString();
+        itemPositionZSlider.max = volumeSize[2];
+        itemOrientationInput.placeholder = "Orientation";
+        itemOrientationInput.type = "number";
+        itemOrientationInput.value = dynamicSection.orientation.toString();
+        itemOrientationInput.id = "ort_" + dynSectionIndex.toString();
+        itemOrientationLabel.textContent = "Orientation";
+        itemOrientationLabel.layout = "inline-space-between";
+        itemTiltInput.placeholder = "Tilt";
+        itemTiltInput.type = "number";
+        itemTiltInput.value = dynamicSection.tilt.toString();
+        itemTiltInput.id = "tilt_" + dynSectionIndex.toString();
+        itemTiltLabel.textContent = "Tilt";
+        itemTiltLabel.layout = "inline-space-between";
+        itemPositionXSlider.addEventListener("calciteSliderInput", function () {
+          //A voxel layer can have multiple dynamic section and is stored as an array.
+          //If a dynamic section needs to be modified or removed, it is important to always check the index because it can change (e.g. removing a section in the middle of the array).
+          //Having a separate array variable that stores all the sections can help to specify which index to use.
+          const index = dynamicSectionList
+            .map((obj) => obj.itemPositionXSlider)
+            .indexOf(itemPositionXSlider.id);
+          const section = voxelLayer.volumeStyles.getItemAt(0).dynamicSections.getItemAt(index);
+          const newPoint = [itemPositionXSlider.value, section.point[1], section.point[2]];
+          section.point = newPoint; //updating the x value of a point of a dynamic section
+        });
+        itemPositionYSlider.addEventListener("calciteSliderInput", function () {
+          const index = dynamicSectionList
+            .map((obj) => obj.itemPositionYSlider)
+            .indexOf(itemPositionYSlider.id);
+          const section = voxelLayer.volumeStyles.getItemAt(0).dynamicSections.getItemAt(index);
+          const newPoint = [section.point[0], itemPositionYSlider.value, section.point[2]];
+          section.point = newPoint; //updating the y value of a point of a dynamic section
+        });
+        itemPositionZSlider.addEventListener("calciteSliderInput", function () {
+          const index = dynamicSectionList
+            .map((obj) => obj.itemPositionZSlider)
+            .indexOf(itemPositionZSlider.id);
+          const section = voxelLayer.volumeStyles.getItemAt(0).dynamicSections.getItemAt(index);
+          const newPoint = [section.point[0], section.point[1], itemPositionZSlider.value];
+          section.point = newPoint; //updating the z value of a point of a dynamic section
+        });
+        itemOrientationInput.addEventListener("calciteInputChange", function () {
+          const index = dynamicSectionList
+            .map((obj) => obj.itemOrientationInput)
+            .indexOf(itemOrientationInput.id);
+          const section = voxelLayer.volumeStyles.getItemAt(0).dynamicSections.getItemAt(index);
+          section.orientation = itemOrientationInput.value; //updating the orientation of a dynamic section
+        });
+        itemTiltInput.addEventListener("calciteInputChange", function () {
+          const index = dynamicSectionList
+            .map((obj) => obj.itemTiltInput)
+            .indexOf(itemTiltInput.id);
+          const section = voxelLayer.volumeStyles.getItemAt(0).dynamicSections.getItemAt(index);
+          section.tilt = itemTiltInput.value; //updating the tilt of a dynamic section
+        });
+        sectionList.appendChild(itemBlock);
+        //Adding a new dynamic section.
+        if (addNew) {
+          const itemAction = document.createElement("calcite-action");
+          itemAction.icon = "trash";
+          itemAction.text = "Delete";
+          itemAction.textEnabled = false;
+          itemAction.slot = "actions-end";
+          itemAction.onclick = function () {
+            const index = dynamicSectionList
+              .map((obj) => obj.itemPositionXSlider)
+              .indexOf(itemPositionXSlider.id);
+            voxelLayer.volumeStyles.getItemAt(0).dynamicSections.removeAt(index);
+            dynamicSectionList.splice(index, 1);
+            itemBlock.remove();
+          };
+          itemBlock.appendChild(itemAction);
+          voxelLayer.volumeStyles.getItemAt(0).dynamicSections.add(dynamicSection);
+        }
+        itemBlock.appendChild(itemPositionXLabel);
+        itemPositionXLabel.appendChild(itemPositionXTextNode);
+        itemPositionXLabel.appendChild(itemPositionXSlider);
+        itemBlock.appendChild(itemPositionYLabel);
+        itemPositionYLabel.appendChild(itemPositionYTextNode);
+        itemPositionYLabel.appendChild(itemPositionYSlider);
+        itemBlock.appendChild(itemPositionZLabel);
+        itemPositionZLabel.appendChild(itemPositionZTextNode);
+        itemPositionZLabel.appendChild(itemPositionZSlider);
+        itemBlock.appendChild(itemOrientationLabel);
+        itemOrientationLabel.appendChild(itemOrientationInput);
+        itemBlock.appendChild(itemTiltLabel);
+        itemTiltLabel.appendChild(itemTiltInput);
+        // Storing all sections in an array will help to map the current index of a section.
+        dynamicSectionList.push({
+          id: dynSectionIndex,
+          itemPositionXSlider: itemPositionXSlider.id,
+          itemPositionYSlider: itemPositionYSlider.id,
+          itemPositionZSlider: itemPositionZSlider.id,
+          itemOrientationInput: itemOrientationInput.id,
+          itemTiltInput: itemTiltInput.id,
+        });
+      }
+
+      // Get all existing dynamic sections on a VoxelLayer
+      let dynamicSectionCount = voxelLayer.volumeStyles.getItemAt(0).dynamicSections.length;
+      for (let i = 0; i < dynamicSectionCount; i++) {
+        const thisSection = voxelLayer.volumeStyles.getItemAt(0).dynamicSections.getItemAt(i);
+        // A sample on how to change an existing dynamic section
+        thisSection.point = [
+          Math.round(thisSection.point[0]),
+          Math.round(thisSection.point[1]),
+          Math.round(thisSection.point[2]),
+        ];
+        thisSection.orientation = 280;
+        thisSection.tilt = 92;
+        createSectionItem(i, thisSection, false, existingSectionsListItem);
+      }
+
+      // Add a dynamic section on a VoxelLayer
+      addDynamicSectionButton.addEventListener("click", function () {
+        dynamicSectionCount = voxelLayer.volumeStyles.getItemAt(0).dynamicSections.length;
+        let newDynamicSection = new VoxelDynamicSection({
+          label: "Dynamic Section " + (dynamicSectionCount + 1).toString(),
+          enabled: true,
+          orientation: 45,
+          tilt: 45,
+          point: [
+            Math.floor(volumeSize[0] / 2),
+            Math.floor(volumeSize[1] / 2),
+            Math.floor(volumeSize[2] / 2),
+          ],
+        });
+        createSectionItem(dynamicSectionCount, newDynamicSection, true, dynamicSectionsListItem);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Create a reference size visualization | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      .title {
+        background-color: inherit;
+        text-align: center;
+        font-size: 14pt;
+        padding: 5px 10px 10px 10px;
+        color: #363636;
+      }
+
+      .high-population {
+        color: #c9770c;
+        font-weight: 900;
+      }
+
+      .low-population {
+        color: #4b6147;
+        font-weight: 900;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map item-id="71463912e8ce4ee3a3e4fd307095484b" center="-85, 38" zoom="5">
+      <arcgis-popup slot="popup"></arcgis-popup>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-expand slot="top-left" group="myGroup">
+        <arcgis-legend></arcgis-legend>
+      </arcgis-expand>
+      <arcgis-expand slot="top-left" expand-icon="information" group="myGroup">
+        <div class="title">
+          Percent of forested land (size)<br />by population (color:
+          <span class="high-population">high population</span>,
+          <span class="low-population">low population</span>)
+        </div>
+        <img
+          id="theImage"
+          src="https://arcgis.github.io/arcgis-samples-javascript/sample-data/cim-primitive-overrides/wurman-legend.png"
+          style="display: none" />
+      </arcgis-expand>
+    </arcgis-map>
+
+    <script type="module">
+      const [FeatureLayer, reactiveUtils, sizeRendererCreator] = await $arcgis.import([
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/core/reactiveUtils.js",
+        "@arcgis/core/smartMapping/renderers/size.js",
+      ]);
+      const layer = new FeatureLayer({
+        title: "Percent of forested land by population",
+        visible: false,
+        portalItem: {
+          id: "f7ad574fe1e04332a9c45710bf647860",
+        },
+        opacity: 1,
+        popupTemplate: {
+          title: "Population and % forest",
+          content: [
+            {
+              type: "fields",
+              fieldInfos: [
+                {
+                  fieldName: "NLCDfrstPt",
+                  label: "% forested land (NLCD)",
+                  fieldFormat: {
+                    type: "number",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  },
+                },
+                {
+                  fieldName: "POP2010",
+                  label: "Population (2010)",
+                  fieldFormat: {
+                    type: "number",
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        definitionExpression: "NLCDfrstPt > 1",
+      });
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.viewOnReady();
+      const thatImage = document.getElementById("theimage");
+      //thatImage.style.display = "inline"; // avoids blink/show on initial app load
+      document.getElementById("theImage").style.display = "block"; // Or "flex", "grid", etc
+      viewElement.map.add(layer);
+      viewElement.constraints.snapToZoom = false;
+      viewElement.constraints.minScale = 18489300;
+      viewElement.constraints.maxScale = 2311161;
+      const sizeParams = {
+        layer,
+        view: viewElement.view,
+        field: "NLCDfrstPt",
+        theme: "reference-size",
+      };
+
+      sizeRendererCreator
+        .createContinuousRenderer(sizeParams)
+        .then(({ renderer }) => {
+          renderer.visualVariables = [
+            {
+              type: "color",
+              field: "POP2010",
+              legendOptions: {
+                title: "Population",
+              },
+              stops: [
+                {
+                  value: 0,
+                  color: [57, 74, 53],
+                },
+                {
+                  value: 15000,
+                  color: [94, 120, 89],
+                },
+                {
+                  value: 30000,
+                  color: [235, 227, 215],
+                },
+                {
+                  value: 90000,
+                  color: [199, 143, 70],
+                },
+                {
+                  value: 150000,
+                  color: [201, 114, 0],
+                },
+              ],
+            },
+          ];
+          layer.renderer = renderer;
+          layer.visible = true;
+        })
+        .catch((error) => {
+          console.log("there was an error: ", error);
+        });
+    </script>
+  </body>
+</html>

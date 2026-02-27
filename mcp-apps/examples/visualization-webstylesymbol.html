@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Realistic WebStyleSymbols | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene
+      basemap="satellite"
+      ground="world-elevation"
+      camera-position="-75.169457, 39.957011, 26"
+      camera-tilt="78"
+      camera-heading="315">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <calcite-notice open icon="link" slot="bottom-left" kind="info">
+        <div slot="message">
+          Discover more WebStyleSymbols using the
+          <a
+            href="https://developers.arcgis.com/javascript/latest/visualization/symbols-color-ramps/symbol-builder/"
+            target="_blank"
+            >Symbol Builder</a
+          >
+          and the list of
+          <a
+            href="https://developers.arcgis.com/javascript/latest/visualization/symbols-color-ramps/webstyle-symbols-3d/"
+            target="_blank"
+            >Esri Web Style Symbols</a
+          >.
+        </div>
+      </calcite-notice>
+    </arcgis-scene>
+
+    <script type="module">
+      const [FeatureLayer, SceneLayer] = await $arcgis.import([
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/layers/SceneLayer.js",
+      ]);
+
+      /********************************************************************
+       * Add layer containing street furniture features: benches, street lamps
+       ********************************************************************/
+
+      // convenience function to retrieve the WebStyleSymbols based on their name
+      function getStreetSymbol(name) {
+        return {
+          type: "web-style", // autocasts as new WebStyleSymbol()
+          name: name,
+          styleName: "EsriRealisticStreetSceneStyle",
+        };
+      }
+
+      // use a UniqueValueRenderer to symbolize the different feature types (street lamps, trash bin)
+      const streetFurnitureRenderer = {
+        type: "unique-value", // autocasts as new UniqueValueRenderer()
+        field: "CATEGORY",
+        defaultSymbol: getStreetSymbol("Light_On_Post_-_Light_on"),
+        uniqueValueInfos: [
+          {
+            value: "Overhanging street",
+            symbol: getStreetSymbol("Overhanging_Street_-_Light_on"),
+          },
+          {
+            value: "Overhanging street and sidewalk",
+            symbol: getStreetSymbol("Light_On_Post_-_Light_on"),
+          },
+          {
+            value: "Trash bin",
+            symbol: getStreetSymbol("Trash_Bin_1"),
+          },
+          {
+            value: "Newspaper",
+            symbol: getStreetSymbol("Newspaper_Vending_Machine"),
+          },
+          {
+            value: "Park bench 1",
+            symbol: getStreetSymbol("Park_Bench_2"),
+          },
+        ],
+        visualVariables: [
+          {
+            type: "rotation",
+            field: "ROTATION",
+          },
+          {
+            type: "size",
+            field: "SIZE",
+            axis: "height",
+          },
+        ],
+      };
+
+      // create the layer and assign the renderer to it
+      const streetFurnitureLayer = new FeatureLayer({
+        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Philadelphia_LoganSquare_streetFurniture/FeatureServer/0",
+        renderer: streetFurnitureRenderer,
+        elevationInfo: {
+          mode: "on-the-ground",
+        },
+      });
+
+      /**********************************************
+       * Add layer containing transportation features
+       **********************************************/
+
+      // convenience object that maps feature attribute value to web style symbol name
+      // will be used to create the uniqueValueInfos in the renderer
+      const transportationSymbols = [
+        {
+          value: "Bus",
+          name: "Bus",
+        },
+        {
+          value: "Taxi",
+          name: "Taxi",
+        },
+        {
+          value: "Ambulance",
+          name: "Ambulance",
+        },
+        {
+          value: "Porsche",
+          name: "Porsche_Carrera",
+        },
+        {
+          value: "Mercedes",
+          name: "Mercedes_S-Class",
+        },
+        {
+          value: "Ford",
+          name: "Ford_Edge",
+        },
+        {
+          value: "Audi",
+          name: "Ford_Edge",
+        },
+        {
+          value: "Volkswagen",
+          name: "Volkswagen_Jetta_Wagon",
+        },
+      ];
+
+      const transportationRenderer = {
+        type: "unique-value", // autocasts as new UniqueValueRenderer()
+        field: "CATEGORY",
+        uniqueValueInfos: transportationSymbols.map((type) => {
+          return {
+            value: type.value,
+            symbol: {
+              type: "web-style", // autocasts as new WebStyleSymbol()
+              name: type.name,
+              styleName: "EsriRealisticTransportationStyle",
+            },
+          };
+        }),
+        visualVariables: [
+          {
+            type: "rotation",
+            // cars need to have a rotation field so that they are aligned to the street
+            field: "ROTATION",
+          },
+          {
+            type: "size",
+            field: "SIZE",
+            axis: "depth",
+          },
+        ],
+      };
+
+      const transportationLayer = new FeatureLayer({
+        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Philadelphia_LoganSquare_cars/FeatureServer",
+        outFields: ["ROTATION", "CATEGORY", "SIZE"],
+        renderer: transportationRenderer,
+        elevationInfo: {
+          mode: "on-the-ground",
+        },
+      });
+
+      /**********************************************
+       * Add layer containing vegetation features
+       **********************************************/
+
+      // define the unique values
+      const uniqueValueInfos = [
+        {
+          value: "Acer",
+          symbol: {
+            type: "web-style", // autocasts as new WebStyleSymbol()
+            name: "Acer",
+            styleName: "EsriRealisticTreesStyle",
+          },
+        },
+        {
+          value: "Bulbophyllum",
+          symbol: {
+            type: "web-style", // autocasts as new WebStyleSymbol()
+            name: "Bulbophyllum",
+            styleName: "EsriRealisticTreesStyle",
+          },
+        },
+        {
+          value: "Cornus",
+          symbol: {
+            type: "web-style", // autocasts as new WebStyleSymbol()
+            name: "Cornus",
+            styleName: "EsriRealisticTreesStyle",
+          },
+        },
+        {
+          value: "Pinus",
+          symbol: {
+            type: "web-style", // autocasts as new WebStyleSymbol()
+            name: "Pinus",
+            styleName: "EsriRealisticTreesStyle",
+          },
+        },
+      ];
+
+      // define vegetationLayer
+      const vegetationLayer = new FeatureLayer({
+        url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/Philadelphia_LoganSquare_vegetation_selection/FeatureServer",
+        elevationInfo: {
+          mode: "on-the-ground",
+        },
+        renderer: {
+          type: "unique-value", // autocasts as new UniqueValueRenderer()
+          field: "CATEGORY",
+          defaultSymbol: {
+            type: "web-style", // autocasts as new WebStyleSymbol()
+            name: "Acer",
+            styleName: "EsriRealisticTreesStyle",
+          },
+          uniqueValueInfos: uniqueValueInfos,
+          visualVariables: [
+            {
+              type: "size",
+              field: "SIZE",
+              axis: "height", // take the real height of the plant from the SIZE field
+            },
+            {
+              type: "rotation",
+              valueExpression: "random() * 360", // we use a random rotation, so that plants look different
+            },
+          ],
+        },
+      });
+
+      // add a mesh scene layer with the fountain in the middle of the square
+      const fountainLayer = new SceneLayer({
+        portalItem: {
+          id: "778c03645d9a4bea9c1ef8543327db29",
+        },
+      });
+
+      // Get a reference to the Scene component
+      const viewElement = document.querySelector("arcgis-scene");
+
+      // When the view is ready, add all the layers to the scene
+      await viewElement.viewOnReady();
+      viewElement.map.addMany([
+        streetFurnitureLayer,
+        vegetationLayer,
+        transportationLayer,
+        fountainLayer,
+      ]);
+    </script>
+  </body>
+</html>

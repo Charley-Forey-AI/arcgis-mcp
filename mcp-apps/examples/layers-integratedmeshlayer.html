@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>IntegratedMeshLayer | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <arcgis-scene item-id="95d51825f62b4b738a3a12d5e518dea3">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <arcgis-layer-list slot="top-right"></arcgis-layer-list>
+      <arcgis-legend
+        slot="bottom-right"
+        legend-style="card"
+        card-style-layout="side-by-side"></arcgis-legend>
+    </arcgis-scene>
+
+    <script type="module">
+      const IntegratedMeshLayer = await $arcgis.import(
+        "@arcgis/core/layers/IntegratedMeshLayer.js",
+      );
+
+      /*************************************
+       * Create IntegratedMeshLayer layer
+       * and add it to the webscene
+       ***********************************/
+      const layer = new IntegratedMeshLayer({
+        url: "https://tiles.arcgis.com/tiles/cFEFS0EWrhfDeVw9/arcgis/rest/services/Buildings_Frankfurt_2021/SceneServer",
+        // Frankfurt integrated mesh data provided by Aerowest GmbH
+        copyright: "Aerowest GmbH",
+        title: "Integrated Mesh Frankfurt",
+      });
+
+      /*************************************
+       * Get the reference to the Scene component,
+       * and when ready add layer to the map at index 0
+       ***********************************/
+      const viewElement = document.querySelector("arcgis-scene");
+      await viewElement.viewOnReady();
+      viewElement.map.add(layer, 0);
+    </script>
+  </body>
+</html>

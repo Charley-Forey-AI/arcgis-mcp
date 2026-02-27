@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Filter features with TimeSlider component | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+      }
+
+      calcite-panel {
+        width: 300px;
+      }
+
+      #statsDiv span {
+        color: #f9c653;
+        font-size: 12pt;
+        font-weight: bolder;
+      }
+      #time-slider {
+        --calcite-color-brand: #f9c653;
+        --calcite-color-brand-press: #c79e42;
+      }
+    </style>
+  </head>
+
+  <body class="calcite-mode-dark">
+    <div id="container">
+      <arcgis-map zoom="13" center="-117.512764, 34.04355">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <arcgis-expand slot="top-left" mode="floating">
+          <arcgis-legend></arcgis-legend>
+        </arcgis-expand>
+        <calcite-panel slot="top-right" heading="USGS Earthquakes">
+          <calcite-block expanded label="stats block">
+            <div id="statsDiv"></div>
+          </calcite-block>
+        </calcite-panel>
+      </arcgis-map>
+      <arcgis-time-slider id="time-slider" mode="time-window" play-rate="50"></arcgis-time-slider>
+    </div>
+    <script type="module">
+      const [Map, GeoJSONLayer] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/layers/GeoJSONLayer.js",
+      ]);
+
+      // get the arcgis-map component element and wait for it to be ready
+      const viewElement = document.querySelector("arcgis-map");
+
+      // set the timeInfo on GeoJSONLayer at the time initialization
+      const layer = new GeoJSONLayer({
+        url: "https://bsvensson.github.io/various-tests/geojson/usgs-earthquakes-06182019.geojson",
+        copyright: "USGS Earthquakes",
+        title: "USGS Earthquakes",
+        // set the CSVLayer's timeInfo based on the date field
+        timeInfo: {
+          startField: "time", // name of the date field
+          interval: {
+            unit: "days", // set time interval to one day
+            value: 1,
+          },
+        },
+        orderBy: {
+          field: "mag",
+        },
+        renderer: {
+          type: "simple",
+          field: "mag",
+          symbol: {
+            type: "simple-marker",
+            color: "orange",
+            outline: null,
+          },
+          visualVariables: [
+            {
+              type: "size",
+              field: "mag",
+              stops: [
+                {
+                  value: 1,
+                  size: "5px",
+                },
+                {
+                  value: 2,
+                  size: "15",
+                },
+                {
+                  value: 3,
+                  size: "35",
+                },
+              ],
+            },
+            {
+              type: "color",
+              field: "depth",
+              stops: [
+                {
+                  value: 2.5,
+                  color: "#F9C653",
+                  label: "<2km",
+                },
+                {
+                  value: 3.5,
+                  color: "#F8864D",
+                  label: "3km",
+                },
+                {
+                  value: 4,
+                  color: "#C53C06",
+                  label: ">4km",
+                },
+              ],
+            },
+          ],
+        },
+        popupTemplate: {
+          title: "{title}",
+          content: [
+            {
+              type: "fields",
+              fieldInfos: [
+                {
+                  fieldName: "place",
+                  label: "Location",
+                  visible: true,
+                },
+                {
+                  fieldName: "mag",
+                  label: "Magnitude",
+                  visible: true,
+                },
+                {
+                  fieldName: "depth",
+                  label: "Depth",
+                  visible: true,
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      viewElement.map = new Map({
+        basemap: "dark-gray-vector",
+        layers: [layer],
+      });
+
+      await viewElement.viewOnReady();
+      const layerView = await viewElement.whenLayerView(layer);
+
+      // Display earthquakes that occurred between 05/25 - 06/17, with a one-day interval
+      const timeSlider = document.querySelector("arcgis-time-slider");
+      timeSlider.fullTimeExtent = layer.timeInfo.fullTimeExtent.expandTo("hours");
+      timeSlider.stops = {
+        interval: {
+          value: 1,
+          unit: "hours",
+        },
+      };
+
+      // set time slider's full extent to 5/25/5019 - until end date of layer's fullTimeExtent
+      const start = new Date(2019, 4, 25);
+      timeSlider.fullTimeExtent = {
+        start: start,
+        end: layer.timeInfo.fullTimeExtent.end,
+      };
+
+      // Set the time slider initial time extent to show earthquakes between 05/25-05/26
+      let end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+      timeSlider.timeExtent = { start, end };
+
+      // listen to time slider component's arcgisPropertyChange event. The event's payload contains
+      // info about the time slider's current time extent change.
+      // Update the earthquakes layer and its layer view based on the time slider's current time extent.
+      timeSlider.addEventListener("arcgisPropertyChange", async (event) => {
+        try {
+          // Only show earthquakes up until the end of timeSlider's current time extent.
+          const date = new Date(timeSlider.timeExtent.end)
+            .toISOString()
+            .replace("T", " ")
+            .replace("Z", "");
+
+          layer.definitionExpression = `time <= Timestamp '${date}'`;
+
+          // Gray out earthquakes that happened before the time slider's current timeExtent.
+          layerView.featureEffect = {
+            filter: {
+              timeExtent: timeSlider.timeExtent,
+              geometry: viewElement.extent,
+            },
+            excludedEffect: "grayscale(20%) opacity(12%)",
+          };
+
+          // Run statistics on earthquakes within the current time extent.
+          const statQuery = layerView.featureEffect.filter.createQuery();
+          statQuery.outStatistics = [magMax, magAvg, magMin, tremorCount, avgDepth];
+
+          const result = await layer.queryFeatures(statQuery);
+          statsDiv.textContent = "";
+
+          if (result.error) {
+            console.error(result.error);
+            return;
+          }
+
+          // results returned from the query and populate the statsDiv with the results.
+          if (result.features.length >= 1) {
+            const attributes = result.features[0].attributes;
+
+            // Get statistics fields and their values from the query results.
+            // htmls is an array of strings that contain the statistics fields and their values.
+            const htmls = Object.keys(statsFields)
+              .map((name) => {
+                if (attributes[name] != null) {
+                  return `<br/>${statsFields[name]}: <span>${attributes[name].toFixed(2)}</span>`;
+                }
+                return "";
+              })
+              .filter((html) => html !== "");
+
+            // Display the number of earthquakes that occurred within the current time extent.
+            const yearHtml = `
+                <span>${result.features[0].attributes["tremor_count"]}</span> earthquakes were recorded between
+                ${timeSlider.timeExtent.start.toLocaleDateString()} -
+                ${timeSlider.timeExtent.end.toLocaleDateString()}.<br/>
+              `;
+
+            statsDiv.innerHTML = htmls.length ? yearHtml + htmls.join("") : yearHtml;
+          }
+        } catch (error) {
+          console.error(error);
+        }
+      });
+
+      // Create statistics definition based on given field and stats type.
+      const createStatistic = (field, outFieldName, type) => ({
+        onStatisticField: field,
+        outStatisticFieldName: outFieldName,
+        statisticType: type,
+      });
+
+      // Create various statistics definitions for the earthquakes layer.
+      const avgDepth = createStatistic("depth", "Average_depth", "avg");
+      const magMax = createStatistic("mag", "Max_magnitude", "max");
+      const magAvg = createStatistic("mag", "Average_magnitude", "avg");
+      const magMin = createStatistic("mag", "Min_magnitude", "min");
+      const tremorCount = createStatistic("mag", "tremor_count", "count");
+
+      // Define statistics fields and their display names.
+      const statsFields = {
+        Max_magnitude: "Max magnitude",
+        Average_magnitude: "Average magnitude",
+        Min_magnitude: "Min magnitude",
+        Average_depth: "Average Depth",
+      };
+    </script>
+  </body>
+</html>

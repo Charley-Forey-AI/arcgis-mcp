@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <title>Disable all view navigation | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map item-id="d5dda743788a4b0688fe48f43ae7beb9">
+      <arcgis-popup slot="popup" dock-enabled></arcgis-popup>
+    </arcgis-map>
+
+    <script type="module">
+      const viewElement = document.querySelector("arcgis-map");
+
+      // Configure the popup docking options
+      const popupElement = viewElement.querySelector("arcgis-popup");
+      popupElement.dockOptions = {
+        breakpoint: false,
+      };
+
+      // Wait for the view to load
+      await viewElement.viewOnReady();
+
+      // Disable rotation
+      viewElement.constraints = {
+        rotationEnabled: false,
+      };
+
+      disableZooming(viewElement);
+
+      /**
+       * Disables all zoom gestures on the given map component.
+       */
+      function disableZooming(viewElement) {
+        // Removes the zoom action on the popup
+        viewElement.popup.actions = [];
+
+        // stops propagation of default behavior when an event fires
+        function stopEvtPropagation(event) {
+          event.detail.stopPropagation();
+        }
+        // disable mouse wheel scroll zooming on the view
+        viewElement.addEventListener("arcgisViewMouseWheel", stopEvtPropagation);
+
+        // disable zooming via double-click on the view
+        viewElement.addEventListener("arcgisViewDoubleClick", stopEvtPropagation);
+
+        // disable zooming out via double-click + Control on the view
+        viewElement.addEventListener("arcgisViewDoubleClick", ["Control"], stopEvtPropagation);
+
+        // disables pinch-zoom and panning on the view
+        viewElement.addEventListener("arcgisViewDrag", stopEvtPropagation);
+
+        // disables double tap drag to zoom on the view
+        viewElement.addEventListener("arcgisViewDoubleTapDrag", stopEvtPropagation);
+
+        // disable the view's zoom box to prevent the Shift + drag
+        // and Shift + Control + drag zoom gestures.
+        viewElement.addEventListener("arcgisViewDrag", ["Shift"], stopEvtPropagation);
+        viewElement.addEventListener("arcgisViewDrag", ["Shift", "Control"], stopEvtPropagation);
+
+        // prevents zooming with the + and - keys
+        viewElement.addEventListener("arcgisViewKeyDown", (event) => {
+          const prohibitedKeys = [
+            "+",
+            "-",
+            "Shift",
+            "_",
+            "=",
+            "ArrowUp",
+            "ArrowDown",
+            "ArrowRight",
+            "ArrowLeft",
+          ];
+          const keyPressed = event.detail.key;
+          if (prohibitedKeys.indexOf(keyPressed) !== -1) {
+            event.detail.stopPropagation();
+          }
+        });
+
+        return viewElement;
+      }
+    </script>
+  </body>
+</html>

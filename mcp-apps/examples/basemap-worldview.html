@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Basemap worldview | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <script>
+      var esriConfig = {
+        apiKey: "YOUR_ACCESS_TOKEN",
+      };
+    </script>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      #app-container {
+        display: flex;
+        flex: 1;
+        gap: 1px;
+      }
+
+      arcgis-map {
+        flex: 1;
+      }
+
+      #basemapWorldview {
+        width: 250px;
+        padding: 10px;
+        background-color: white;
+      }
+
+      #default {
+        padding: 10px;
+        background-color: white;
+      }
+    </style>
+  </head>
+
+  <body>
+    <calcite-shell>
+      <div id="app-container">
+        <arcgis-map id="map-1" basemap="arcgis/community" center="-90.02961, 26.79342" zoom="4">
+          <arcgis-zoom slot="top-left"></arcgis-zoom>
+          <div id="default" slot="top-right">Default Basemap Worldview</div>
+        </arcgis-map>
+
+        <arcgis-map id="map-2" basemap="arcgis/community" center="-90.02961, 26.79342" zoom="4">
+          <arcgis-zoom slot="top-left"></arcgis-zoom>
+          <div id="basemapWorldview" slot="top-right">
+            <calcite-label>Basemap worldview</calcite-label>
+            <calcite-combobox
+              id="worldviewCombobox"
+              selection-mode="single"
+              placeholder="Select a worldview"
+              clear-disabled></calcite-combobox>
+          </div>
+        </arcgis-map>
+      </div>
+    </calcite-shell>
+
+    <script type="module">
+      const [esriRequest, Basemap, BasemapStyle, Extent] = await $arcgis.import([
+        "@arcgis/core/request.js",
+        "@arcgis/core/Basemap.js",
+        "@arcgis/core/support/BasemapStyle.js",
+        "@arcgis/core/geometry/Extent.js",
+      ]);
+
+      const viewElement1 = document.querySelector("#map-1");
+      const viewElement2 = document.querySelector("#map-2");
+
+      viewElement2.basemap = new Basemap({
+        style: new BasemapStyle({
+          id: "arcgis/community",
+          worldview: "unitedStatesOfAmerica",
+        }),
+      });
+
+      // update combobox values with worldviews from rest endpoint
+      const basemapStylesEndpoint =
+        "https://basemapstyles-api.arcgis.com/arcgis/rest/services/styles/v2/styles/self";
+
+      esriRequest(basemapStylesEndpoint, {
+        responseType: "json",
+      }).then((response) => {
+        const json = response.data;
+        // add each worldview as a combobox item
+        json.worldviews.forEach((worldview) => {
+          const comboboxItem = document.createElement("calcite-combobox-item");
+          comboboxItem.value = worldview.code;
+          comboboxItem.heading = worldview.name;
+          comboboxItem.selected = viewElement2.basemap.style.worldview === worldview.code;
+          worldviewCombobox.appendChild(comboboxItem);
+        });
+      });
+      // set extents for each of the worldview locations
+      const worldviewLocations = {
+        china: new Extent({
+          xmin: 70.98237230888772,
+          ymin: 14.40307149460479,
+          xmax: 123.62885668387374,
+          ymax: 48.72742138579548,
+          spatialReference: 4326,
+        }),
+        india: new Extent({
+          xmin: 53.12008436050707,
+          ymin: 4.300728820629954,
+          xmax: 105.76656873549308,
+          ymax: 41.50717877978164,
+          spatialReference: 4326,
+        }),
+        israel: new Extent({
+          xmin: 31.68881241856345,
+          ymin: 29.767839683872268,
+          xmax: 38.2696229654367,
+          ymax: 34.15602762683976,
+          spatialReference: 4326,
+        }),
+        japan: new Extent({
+          xmin: 124.4442435656779,
+          ymin: 29.9006184531336,
+          xmax: 150.7674857531709,
+          ymax: 46.090722101828995,
+          spatialReference: 4326,
+        }),
+        morocco: new Extent({
+          xmin: -23.347082138056592,
+          ymin: 18.808998642260764,
+          xmax: 2.976160049436411,
+          ymax: 36.98186451197582,
+          spatialReference: 4326,
+        }),
+        pakistan: new Extent({
+          xmin: 57.04848254525357,
+          ymin: 21.26768394019943,
+          xmax: 83.37172473274657,
+          ymax: 39.04377279090571,
+          spatialReference: 4326,
+        }),
+        southKorea: new Extent({
+          xmin: 121.22558538612685,
+          ymin: 32.13861197431788,
+          xmax: 134.38720647987336,
+          ymax: 40.463848969139285,
+          spatialReference: 4326,
+        }),
+        unitedArabEmirates: new Extent({
+          xmin: 51.03645291056343,
+          ymin: 21.546327085249732,
+          xmax: 57.61726345743669,
+          ymax: 26.27492970888642,
+          spatialReference: 4326,
+        }),
+        unitedStatesOfAmerica: new Extent({
+          xmin: -103.08145244811661,
+          ymin: 15.496689338094148,
+          xmax: -76.75821026062363,
+          ymax: 34.16238224003127,
+          spatialReference: 4326,
+        }),
+        vietnam: new Extent({
+          xmin: 92.73605521973059,
+          ymin: 4.921828285996,
+          xmax: 119.05929740722358,
+          ymax: 24.812143623220667,
+          spatialReference: 4326,
+        }),
+      };
+      const updateWorldview = (worldviewCode) => {
+        // update the basemap worldview
+        viewElement2.basemap = new Basemap({
+          style: new BasemapStyle({
+            id: "arcgis/community",
+            worldview: worldviewCode,
+          }),
+        });
+        // go to the extent that matches the current worldview
+        viewElement1.goTo(worldviewLocations[worldviewCode]);
+        viewElement2.extent = worldviewLocations[worldviewCode];
+      };
+      const worldviewCombobox = document.getElementById("worldviewCombobox");
+      // when the combobox value changes, update the worldview
+      worldviewCombobox.addEventListener("calciteComboboxChange", () => {
+        updateWorldview(worldviewCombobox.value);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Editing with coordinate inputs | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      .notice {
+        max-width: 25rem;
+      }
+
+      .notice p {
+        padding: 0;
+        margin: 0.1rem;
+      }
+
+      .notice > div[slot="message"] {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      em {
+        font-size: 0.8em;
+      }
+
+      #stickyNote {
+        gap: 1rem;
+        font-family: monospace;
+        font-weight: 400;
+        font-style: normal;
+        background: #ffc;
+        box-shadow: 5px 5px 7px rgba(33, 33, 33, 0.7);
+        transform: rotate(-2deg);
+        padding: 0 1rem;
+        font-size: 1rem;
+      }
+
+      .sticky-note p {
+        margin: 0;
+        margin-top: 0.1rem;
+      }
+
+      .units {
+        user-select: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene item-id="01725b4350d04a2dbe56d395abca01e0">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"> </arcgis-compass>
+      <calcite-notice id="placingComponent" class="notice" open="" slot="top-right">
+        <div slot="title">3D Model Georeferencing</div>
+        <div slot="message" style="margin: 0">
+          <div>
+            <p>
+              Place a building model by specifying the coordinates of its pivot point and its
+              orientation relative to north.
+              <calcite-icon icon="information" id="info-icon" scale="s"></calcite-icon>
+            </p>
+            <calcite-tooltip label="Info" reference-element="info-icon">
+              <span
+                >Click the button below to load and place the building model. You can position it
+                manually, type in the coordinates and orientation from the site plan, or Copy+Paste
+                the values from the sticky note.<br /><br />
+                The coordinates can be entered as a latitude+longitude pair in DMS, DDM, or DD
+                format, or as separate longitude and latitude values.
+              </span>
+            </calcite-tooltip>
+          </div>
+          <calcite-button id="placeModelButton" icon-start="pin-tear">Place model</calcite-button>
+          <div>
+            <em
+              >Building model by André Wisén from
+              <a
+                href="https://github.com/andrewisen/bim-whale-ifc-samples/tree/main/AdvancedProject"
+                target="_blank"
+                >BIM Whale Sample Files</a
+              >.</em
+            >
+          </div>
+        </div>
+      </calcite-notice>
+      <div id="stickyNote" slot="bottom-left">
+        <p>
+          Building origin:<br />
+           DMS: 42°19'57.3" N, 71°3'26.86" W<br />
+           Longitude: -71.057461<br />
+           Latitude: 42.332583<br />
+          Z: 2.8<span class="units">m</span> / 9.2<span class="units">ft</span><br />
+          Orientation: 89.28<span class="units">°</span>
+        </p>
+      </div>
+    </arcgis-scene>
+
+    <script type="module">
+      const [SketchViewModel, GraphicsLayer, Point, Mesh] = await $arcgis.import([
+        "@arcgis/core/widgets/Sketch/SketchViewModel.js",
+        "@arcgis/core/layers/GraphicsLayer.js",
+        "@arcgis/core/geometry/Point.js",
+        "@arcgis/core/geometry/Mesh.js",
+      ]);
+      // Get the Scene component and wait for the view to initialize
+      const viewElement = document.querySelector("arcgis-scene");
+      await viewElement.viewOnReady();
+      // Create a client-side graphics layer for the SketchViewModel we use for uploading the 3D model to.
+      const graphics = new GraphicsLayer();
+      viewElement.map.add(graphics);
+      const sketchViewModel = new SketchViewModel({
+        view: viewElement.view,
+        layer: graphics,
+        //Show the tooltips
+        tooltipOptions: {
+          enabled: true,
+        },
+      });
+      sketchViewModel.on("create", (event) => {
+        if (event.state === "complete") {
+          sketchViewModel.update(event.graphic);
+        }
+      });
+      // Add interactivity to the UI.
+      const placeModelButton = document.getElementById("placeModelButton");
+      // Create a new abort controller for the new operation.
+      let placeModelAbortController = null;
+      placeModelButton.addEventListener("click", async () => {
+        // Cancel any pending placing operation.
+        placeModelAbortController?.abort();
+        // Reflect that the loading of the model is in process.
+        updateUI(true);
+        const { signal } = (placeModelAbortController = new AbortController());
+        // Create mesh from the 3D building model.
+        const mesh = await Mesh.createFromGLTF(
+          new Point(), // Origin of the model.
+          "https://developers.arcgis.com/javascript/latest/assets/sample-code/editing-coordinate-inputs/model.glb", // Url pointing to the 3D model file.
+          {
+            vertexSpace: "local",
+          }, // In case of scenes in geographic or WebMercator spatial references, the vertexSpace needs to be set to "local".
+        );
+        await mesh.load();
+        // Reflect that the loading of the model has finished.
+        updateUI(false);
+        if (signal.aborted) {
+          return;
+        }
+        // Add the mesh to the SketchViewModel.
+        sketchViewModel.place(mesh);
+      });
+      // Helper functions:
+      // Updating buttons in UI.
+      function updateUI(creating) {
+        placeModelButton.loading = creating;
+        placeModelButton.disabled = creating;
+        placeModelButton.textContent = creating ? "Loading..." : "Place model";
+        placeModelButton.iconStart = creating ? null : "pin-tear";
+      }
+    </script>
+  </body>
+</html>

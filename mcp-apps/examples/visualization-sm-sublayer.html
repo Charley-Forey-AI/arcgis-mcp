@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>MapImageLayer - Explore data from a dynamic workspace | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      .hideInitially {
+        visibility: hidden;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-map basemap="hybrid" zoom="5" center="-101.09, 40.97">
+      <arcgis-popup slot="popup"></arcgis-popup>
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-layer-list slot="top-right"></arcgis-layer-list>
+      <calcite-card id="selectCard" class="hideInitially">
+        <div style="padding-bottom: 3px">
+          Ancestry:
+          <select id="ancestry-select"></select>
+        </div>
+        Class Method:
+        <select id="classification-select" class="esri-widget">
+          <option value="natural-breaks">Natural Breaks</option>
+          <option value="quantile">Quantile</option>
+          <option value="equal-interval">Equal Interval</option>
+          <option value="standard-deviation">Standard Deviation</option>
+        </select>
+      </calcite-card>
+      <arcgis-legend class="hideInitially" auto-destroy-disabled></arcgis-legend>
+    </arcgis-map>
+
+    <script type="module">
+      const [MapImageLayer, colorRendererCreator, reactiveUtils] = await $arcgis.import([
+        "@arcgis/core/layers/MapImageLayer.js",
+        "@arcgis/core/smartMapping/renderers/color.js",
+        "@arcgis/core/core/reactiveUtils.js",
+      ]);
+
+      const ancestrySelect = document.getElementById("ancestry-select");
+      const classSelect = document.getElementById("classification-select");
+
+      /*****************************************************************
+       * Create a MapImageLayer instance pointing to a Map Service
+       * containing US state boundary geometries. A sublayer is added to
+       * the layer with a dynamic data layer source. The dynamic layer
+       * is created by joining a table with ancestry attributes to an
+       * existing map service layer with geometries (states).
+       *
+       * The data exist in a registered workspace in the map service.
+       *****************************************************************/
+
+      const censusLayer = new MapImageLayer({
+        url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/AGP/Census/MapServer",
+        title: "United States Population",
+        listMode: "hide-children",
+        sublayers: [
+          {
+            title: "% population with selected ancestry",
+            id: 0,
+            opacity: 0.75,
+            source: {
+              type: "data-layer",
+              dataSource: {
+                type: "join-table",
+                leftTableSource: {
+                  type: "map-layer",
+                  mapLayerId: 3,
+                },
+                rightTableSource: {
+                  type: "data-layer",
+                  dataSource: {
+                    type: "table",
+                    workspaceId: "CensusFileGDBWorkspaceID",
+                    dataSourceName: "ancestry",
+                  },
+                },
+                leftTableKey: "STATE_NAME",
+                rightTableKey: "State",
+                joinType: "left-outer-join",
+              },
+            },
+          },
+        ],
+      });
+
+      // Get the sublayer to explore
+      const ancestrySublayer = censusLayer.sublayers.find((sublayer) => {
+        return sublayer.title === "% population with selected ancestry";
+      });
+
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.viewOnReady();
+
+      // The feature layer equivalent of the sublayer will be used
+      // for generating the renderer for the sublayer and constructing
+      // the select containing various ancestry categories
+
+      reactiveUtils
+        .whenOnce(() => !viewElement.view.updating)
+        .then(() => {
+          ancestrySublayer
+            .createFeatureLayer()
+            .then((ancestryFeatureLayer) => {
+              return ancestryFeatureLayer.load();
+            })
+            .then(createDropdown);
+        });
+
+      // Populate one of the select elements with options for exploring
+      // different ancestry types.
+      function createDropdown(ancestryFeatureLayer) {
+        ancestryFeatureLayer.fields
+          .filter((field) => {
+            return (
+              field.name.slice(0, 8) === "ancestry" &&
+              field.name.indexOf("OBJECTID") === -1 &&
+              field.name.indexOf("State") === -1
+            );
+          })
+          .forEach((field) => {
+            const option = document.createElement("option");
+            option.value = field.name;
+            option.text = field.name.slice(9, 30);
+            ancestrySelect.appendChild(option);
+          });
+        ancestrySelect.value = "ancestry.Swedish"; // set a default instead of using the first in the list
+        createRenderer(ancestryFeatureLayer);
+        ancestrySelect.addEventListener("change", () => {
+          createRenderer(ancestryFeatureLayer);
+        });
+        classSelect.addEventListener("change", () => {
+          createRenderer(ancestryFeatureLayer);
+        });
+      }
+
+      // Generates a renderer using the feature layer and
+      // sets the renderer on the sublayer instance
+      function createRenderer(featureLayer) {
+        const params = {
+          // set FeatureLayer as input
+          layer: featureLayer,
+          // Arcade is used to normalize and round the data
+          valueExpression:
+            "Round( ( $feature['" +
+            ancestrySelect.value +
+            "'] / $feature['states.POP2007'] ) * 100, 1);",
+          view: viewElement.view, // required with valueExpression
+          classificationMethod: classSelect.value,
+        };
+
+        colorRendererCreator
+          .createClassBreaksRenderer(params)
+          .then((response) => {
+            // set the renderer on the sublayer
+            ancestrySublayer.renderer = response.renderer;
+            const selectedAncestry = ancestrySelect[ancestrySelect.selectedIndex].text;
+
+            // first time, add censusLayer
+            if (!viewElement.map.layers.includes(censusLayer)) {
+              viewElement.map.add(censusLayer);
+            }
+
+            // Update the popupTemplate to display data from the selected field
+            ancestrySublayer.popupTemplate = {
+              title: "{states.STATE_NAME}",
+              content:
+                "{expression/per_ancestry}% of the {states.POP2007} people in {states.STATE_NAME} have " +
+                selectedAncestry +
+                " ancestry.",
+              expressionInfos: [
+                {
+                  name: "per_ancestry",
+                  expression: response.renderer.valueExpression,
+                },
+              ],
+              fieldInfos: [
+                {
+                  fieldName: "states.POP2007",
+                  format: {
+                    digitSeparator: true,
+                    places: 0,
+                  },
+                },
+              ],
+            };
+          })
+          .catch((error) => {
+            console.error(error);
+          });
+      }
+      // Set Layer List with two content elements in the same content panel
+      // 1. An element containing the select elements for data exploration
+      // 2. A legend instance
+      const layerListElement = document.querySelector("arcgis-layer-list");
+      layerListElement.listItemCreatedFunction = function (event) {
+        const item = event.item;
+        item.panel = {
+          content: [document.getElementById("selectCard"), document.querySelector("arcgis-legend")],
+          open: true,
+        };
+      };
+    </script>
+  </body>
+</html>

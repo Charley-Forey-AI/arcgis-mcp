@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Visualize features by type | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body class="calcite-mode-dark">
+    <arcgis-map item-id="625fed092fb14fdbb3f79089284b383a" center="-95.43, 29.77" scale="544504">
+      <arcgis-legend slot="bottom-left"></arcgis-legend>
+    </arcgis-map>
+    <script type="module">
+      const FeatureLayer = await $arcgis.import("@arcgis/core/layers/FeatureLayer.js");
+
+      const viewElement = document.querySelector("arcgis-map");
+      await viewElement.viewOnReady();
+      viewElement.constraints.snapToZoom = false;
+      // Configure the base symbol style and color ramp for road types.
+      const init = { type: "simple-line", style: "solid", width: "4px" };
+      const colors = ["#dc4b00", "#3c6ccc", "#d9dc00", "#91d900", "#986ba1"];
+      // Color and label each feature based on its matching field value.
+      const renderer = {
+        type: "unique-value", // autocasts as new UniqueValueRenderer()
+        field: "RTTYP", // Treat features based on their route type code.
+        defaultLabel: "Other",
+        defaultSymbol: { ...init, color: colors[4] },
+        // The colors and labels defined here will reflect in the legend.
+        uniqueValueInfos: [
+          { label: "Interstate", symbol: { ...init, color: colors[0] }, value: "I" },
+          { label: "US Highway", symbol: { ...init, color: colors[1] }, value: "U" },
+          { label: "State Highway", symbol: { ...init, color: colors[2] }, value: "S" },
+          { label: "Major road", symbol: { ...init, color: colors[3] }, value: "M" },
+        ],
+        legendOptions: { title: "Route type" },
+        // Define feature draw order by class position in uniqueValueInfos.
+        orderByClassesEnabled: true,
+      };
+      const layer = new FeatureLayer({
+        // Fetch from a service containing primary road features.
+        url: "https://services2.arcgis.com/FiaPA4ga0iQKduv3/ArcGIS/rest/services/Transportation_v1/FeatureServer/1",
+        title: "US Road System",
+        renderer,
+        minScale: 0,
+        maxScale: 0,
+      });
+
+      viewElement.map.add(layer); // Add the layer to the map.
+    </script>
+  </body>
+</html>

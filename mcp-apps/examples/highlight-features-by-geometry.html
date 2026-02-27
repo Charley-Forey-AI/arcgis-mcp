@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Select features by rectangle | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      #app-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+
+      #app-container > arcgis-map {
+        height: 60%;
+      }
+
+      #app-container > arcgis-feature-table {
+        width: 100%;
+        height: 40%;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="app-container">
+      <!-- Add an id to arcgis-map and reference it in arcgis-feature-table -->
+      <arcgis-map id="nps-map">
+        <arcgis-zoom slot="top-left"></arcgis-zoom>
+        <calcite-button
+          id="select-by-rectangle"
+          slot="top-left"
+          kind="neutral"
+          icon-start="cursor-selection"
+          title="Select by rectangle"></calcite-button>
+        <calcite-button
+          id="clear-selection"
+          slot="top-left"
+          kind="neutral"
+          icon-start="clear-selection"
+          title="Clear selection"></calcite-button>
+      </arcgis-map>
+      <arcgis-feature-table reference-element="nps-map"></arcgis-feature-table>
+    </div>
+    <script type="module">
+      const [
+        Map,
+        Extent,
+        FeatureLayer,
+        GraphicsLayer,
+        SketchViewModel,
+        Graphic,
+        Basemap,
+        unionOperator,
+      ] = await $arcgis.import([
+        "@arcgis/core/Map.js",
+        "@arcgis/core/geometry/Extent.js",
+        "@arcgis/core/layers/FeatureLayer.js",
+        "@arcgis/core/layers/GraphicsLayer.js",
+        "@arcgis/core/widgets/Sketch/SketchViewModel.js",
+        "@arcgis/core/Graphic.js",
+        "@arcgis/core/Basemap.js",
+        "@arcgis/core/geometry/operators/unionOperator.js",
+      ]);
+
+      // map spatial reference wkid
+      const wkid = 102003;
+
+      // Initialize map and layers
+      const viewElement = document.querySelector("arcgis-map");
+      const arcgisFeatureTable = document.querySelector("arcgis-feature-table");
+
+      // set up the states layer. It will be used as the basemap
+      const states = new FeatureLayer({
+        url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/2",
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: "#f0ebe4",
+            outline: {
+              color: "#DCDCDC",
+              width: "0.5px",
+            },
+          },
+        },
+        spatialReference: { wkid },
+        effect: "drop-shadow(-10px, 10px, 6px gray)",
+      });
+
+      // national park service establishments feature service
+      const layer = new FeatureLayer({
+        portalItem: { id: "d72ab790752142bd9dfb190c79d6582b" },
+      });
+
+      // set up a SketchViewModel to select intersecting features from the national parks
+      // feature layer when the user draws rectangle(s) on the map
+      const polygonGraphicsLayer = new GraphicsLayer();
+
+      viewElement.map = new Map({
+        basemap: new Basemap({ baseLayers: [states] }),
+        layers: [layer, polygonGraphicsLayer],
+      });
+
+      // Set map component properties
+      viewElement.spatialReference = { wkid };
+      viewElement.constraints = { snapToZoom: false, minScale: 50465153 };
+      viewElement.background = { color: "white" };
+      // set the highlights collection. Change the colors of the two default highlight option objects
+      viewElement.highlights = [
+        { name: "default", color: "#17CBE8" }, // used by feature table and popup
+        { name: "temporary", color: "magenta" }, // used when user mouse the pointer over table cells
+      ];
+
+      await viewElement.viewOnReady();
+
+      // set the map's extent to the lower 48 states
+      viewElement.extent = new Extent({
+        spatialReference: { wkid },
+        xmax: 2275062,
+        xmin: -2752064,
+        ymax: 1676207,
+        ymin: -1348080,
+      });
+
+      arcgisFeatureTable.layer = layer;
+
+      const layerView = await viewElement.whenLayerView(layer);
+
+      let features = []; // oids of the features selected when user draws a rectangle
+      let onRowOverHighlight;
+
+      // highlight the feature on the map corresponding to the table cell
+      arcgisFeatureTable.addEventListener("arcgisCellPointerover", (event) => {
+        onRowOverHighlight?.remove();
+        onRowOverHighlight = layerView.highlight(event.detail.feature, { name: "temporary" });
+      });
+
+      // remove the highlight handler when user moves the pointer out of the cell
+      arcgisFeatureTable.addEventListener("arcgisCellPointerout", (event) => {
+        onRowOverHighlight?.remove(); // not being removed sometimes if the cursor is moving fast
+      });
+
+      // detect changes in the feature table selection
+      // apply feature effect to the layer view based on selected objectIds
+      arcgisFeatureTable.addEventListener("arcgisSelectionChange", (event) => {
+        event.detail.removed.forEach((item) => {
+          const data = features.find((data) => data === item);
+          if (data) {
+            features.splice(features.indexOf(data), 1);
+          }
+        });
+
+        event.detail.added.forEach((item) => {
+          features.push(item);
+        });
+
+        layerView.featureEffect = {
+          filter: { objectIds: features },
+          excludedEffect: "blur(5px) grayscale(90%) opacity(40%)",
+        };
+      });
+
+      const sketchViewModel = new SketchViewModel({
+        view: viewElement.view,
+        layer: polygonGraphicsLayer,
+        updateOnGraphicClick: false,
+      });
+
+      // set up sketch view model to draw a rectangle when user clicks the button
+      document.getElementById("select-by-rectangle").addEventListener("click", () => {
+        viewElement.closePopup();
+        sketchViewModel.create("rectangle");
+      });
+
+      // clear the selection and highlights on the map.
+      document.getElementById("clear-selection").addEventListener("click", () => {
+        arcgisFeatureTable.highlightIds.removeAll();
+        arcgisFeatureTable.filterGeometry = null;
+        polygonGraphicsLayer.removeAll();
+        onRowOverHighlight?.remove();
+      });
+
+      // Highlight features from the national parks layer when the user finishes drawing a rectangle on the map
+      sketchViewModel.on("create", async (event) => {
+        if (event.state === "complete") {
+          const geometries = polygonGraphicsLayer.graphics.map((graphic) => graphic.geometry);
+          const queryGeometry = unionOperator.executeMany(geometries.toArray());
+          selectFeatures(queryGeometry, layerView);
+        }
+      });
+
+      // This function is called when the user completes drawing a rectangle on the map.
+      // It queries features that intersect the rectangle and sets the highlightIds
+      // of the feature table component to match the objectIds of features of the query result
+      async function selectFeatures(geometry, layerView) {
+        try {
+          const query = { geometry };
+          const result = await layerView.queryFeatures(query);
+
+          if (result.features.length === 0) {
+            clearSelection();
+          } else {
+            arcgisFeatureTable.highlightIds.removeAll();
+            arcgisFeatureTable.filterGeometry = geometry;
+
+            const highlightIds = result.features.map((feature) => feature.attributes.ObjectId);
+            arcgisFeatureTable.highlightIds.addMany(highlightIds);
+          }
+        } catch (error) {
+          console.error("Error selecting features:", error);
+        }
+      }
+
+      function clearSelection() {
+        arcgisFeatureTable.highlightIds.removeAll();
+        arcgisFeatureTable.filterGeometry = null;
+        polygonGraphicsLayer.removeAll();
+        onRowOverHighlight?.remove();
+      }
+    </script>
+  </body>
+</html>

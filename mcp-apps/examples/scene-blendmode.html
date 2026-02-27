@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Blend modes in 3D | Sample | ArcGIS Maps SDK for JavaScript</title>
+
+    <!-- Load the ArcGIS Maps SDK for JavaScript from CDN -->
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <arcgis-scene basemap="osm" ground="world-elevation">
+      <arcgis-zoom slot="top-left"></arcgis-zoom>
+      <arcgis-navigation-toggle slot="top-left"></arcgis-navigation-toggle>
+      <arcgis-compass slot="top-left"></arcgis-compass>
+      <arcgis-home slot="top-left"></arcgis-home>
+      <calcite-segmented-control id="blendmode-selection" slot="top-right" width="full">
+        <calcite-segmented-control-item value="basemap">Basemap</calcite-segmented-control-item>
+        <calcite-segmented-control-item value="hillshade">Hillshade</calcite-segmented-control-item>
+        <calcite-segmented-control-item value="blended" checked=""
+          >Blended</calcite-segmented-control-item
+        >
+      </calcite-segmented-control>
+    </arcgis-scene>
+    <script type="module">
+      const [TileLayer] = await $arcgis.import(["@arcgis/core/layers/TileLayer.js"]);
+
+      /*******************************************************
+       * Create the hillshade tile layer and set the blend mode
+       *******************************************************/
+      const hillshade = new TileLayer({
+        url: "https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer",
+        blendMode: "luminosity",
+      });
+
+      /***************************************************
+       * Get the reference to the Scene component,
+       * add layer and set camera once component is ready
+       ***************************************************/
+      const viewElement = document.querySelector("arcgis-scene");
+      await viewElement.viewOnReady();
+
+      viewElement.map.layers = [hillshade];
+      viewElement.camera = {
+        position: {
+          longitude: 7.8027741,
+          latitude: 46.0200663,
+          z: 3318.92652,
+        },
+        heading: 242.83,
+        tilt: 84.65,
+      };
+
+      /****************************************************************
+       * Add functionality to change between different blending options
+       ***************************************************************/
+      const selection = document.getElementById("blendmode-selection");
+      selection.addEventListener("calciteSegmentedControlChange", () => {
+        switch (selection.selectedItem.value) {
+          case "basemap":
+            // Turn off the hillshade to show the basemap
+            hillshade.visible = false;
+            break;
+
+          case "hillshade":
+            // Turn on the hillshade and remove the luminosity blend mode
+            hillshade.visible = true;
+            hillshade.blendMode = "normal";
+            break;
+
+          case "blended":
+            // Turn on the hillshade and add the luminosity blend mode
+            hillshade.visible = true;
+            hillshade.blendMode = "luminosity";
+            break;
+        }
+      });
+    </script>
+  </body>
+</html>
