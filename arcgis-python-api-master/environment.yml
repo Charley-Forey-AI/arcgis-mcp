@@ -1,6 +1,0 @@
-channels:
-- defaults
-- esri
-dependencies:
-- arcgis
-- arcgis-mapping
